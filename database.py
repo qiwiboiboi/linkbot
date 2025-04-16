@@ -80,8 +80,55 @@ class Database:
     
     def get_all_users(self):
         """Получение списка всех пользователей для админа"""
-        self.cursor.execute("SELECT username, telegram_id, link FROM users")
+        self.cursor.execute("SELECT id, username, telegram_id, link FROM users")
         return self.cursor.fetchall()
+    
+    def delete_user(self, user_id):
+        """Удаление пользователя"""
+        try:
+            self.cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при удалении пользователя: {e}")
+            return False
+    
+    def update_username(self, user_id, new_username):
+        """Изменение логина пользователя"""
+        try:
+            self.cursor.execute(
+                "UPDATE users SET username = ? WHERE id = ?",
+                (new_username, user_id)
+            )
+            self.connection.commit()
+            return True
+        except sqlite3.IntegrityError:
+            logger.error(f"Пользователь с логином {new_username} уже существует")
+            return False
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при изменении логина: {e}")
+            return False
+    
+    def update_password(self, user_id, new_password):
+        """Изменение пароля пользователя"""
+        try:
+            self.cursor.execute(
+                "UPDATE users SET password = ? WHERE id = ?",
+                (new_password, user_id)
+            )
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при изменении пароля: {e}")
+            return False
+    
+    def get_user_by_id(self, user_id):
+        """Получение информации о пользователе по ID"""
+        self.cursor.execute(
+            "SELECT username, telegram_id, link FROM users WHERE id = ?",
+            (user_id,)
+        )
+        return self.cursor.fetchone()
     
     def close(self):
         """Закрытие соединения с базой данных"""
