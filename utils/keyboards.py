@@ -1,36 +1,45 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 def get_start_keyboard():
     """Клавиатура для неавторизованных пользователей"""
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton('🔑 Авторизоваться'))
-    return keyboard
+    kb = [
+        [KeyboardButton(text='🔑 Авторизоваться')]
+    ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_main_keyboard():
-    """Клавиатура для авторизованных пользователей"""
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton('🔄 Изменить ссылку'), KeyboardButton('🔗 Моя ссылка'))
-    keyboard.add(KeyboardButton('🚪 Выйти'))
-    return keyboard
+    """Инлайн-клавиатура для авторизованных пользователей"""
+    kb = [
+        [
+            InlineKeyboardButton(text='🔄 Изменить ссылку', callback_data='set_link'),
+            InlineKeyboardButton(text='🔗 Моя ссылка', callback_data='my_link')
+        ],
+        [InlineKeyboardButton(text='🚪 Выйти', callback_data='logout')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
 
 def get_admin_keyboard():
-    """Клавиатура для администраторов"""
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row(KeyboardButton('🔄 Изменить ссылку'), KeyboardButton('🔗 Моя ссылка'))
-    keyboard.row(KeyboardButton('👥 Пользователи'), KeyboardButton('🏪 Добавить'))
-    keyboard.row(KeyboardButton('✏️ Изменить'), KeyboardButton('❌ Удалить'))
-    keyboard.add(KeyboardButton('🚪 Выйти'))
-    return keyboard
+    """Обычная клавиатура для администраторов"""
+    kb = [
+        [KeyboardButton(text='🔄 Изменить ссылку'), KeyboardButton(text='🔗 Моя ссылка')],
+        [KeyboardButton(text='👥 Пользователи'), KeyboardButton(text='🏪 Добавить')],
+        [KeyboardButton(text='✏️ Изменить'), KeyboardButton(text='❌ Удалить')],
+        [KeyboardButton(text='📢 Рассылка')],
+        [KeyboardButton(text='🚪 Выйти')]
+    ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_user_action_keyboard():
     """Клавиатура для выбора действия с пользователем"""
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.row(KeyboardButton('Изменить логин'), KeyboardButton('Изменить пароль'))
-    keyboard.add(KeyboardButton('❌ Отмена'))
-    return keyboard
+    kb = [
+        [KeyboardButton(text='Изменить логин'), KeyboardButton(text='Изменить пароль')],
+        [KeyboardButton(text='❌ Отмена')]
+    ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_cancel_keyboard():
     """Клавиатура только с кнопкой отмены"""
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-    keyboard.add(KeyboardButton('❌ Отмена'))
-    return keyboard
+    kb = [
+        [KeyboardButton(text='❌ Отмена')]
+    ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)

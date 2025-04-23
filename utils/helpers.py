@@ -1,5 +1,5 @@
 from aiogram import types
-from aiogram.dispatcher import FSMContext
+from aiogram.fsm.context import FSMContext
 from config import ADMIN_IDS
 from utils.keyboards import get_admin_keyboard, get_start_keyboard
 
@@ -13,8 +13,10 @@ async def check_admin(message: types.Message) -> bool:
 async def cancel_state(message: types.Message, state: FSMContext) -> bool:
     """Обработка отмены операции"""
     if message.text == "❌ Отмена":
-        await message.answer("Действие отменено.", reply_markup=get_admin_keyboard())
-        await state.finish()
+        is_admin = message.from_user.id in ADMIN_IDS
+        keyboard = get_admin_keyboard() if is_admin else get_start_keyboard()
+        await message.answer("Действие отменено.", reply_markup=keyboard)
+        await state.clear()
         return True
     return False
 
@@ -30,10 +32,16 @@ def format_user_list(users: list) -> str:
         report += f"   Ссылка: {link or '—'}\n\n"
     return report
 
-async def send_error_message(message: types.Message, error_text: str):
+async def send_error_message(message: types.Message, error_text: str, reply_markup=None):
     """Отправка сообщения об ошибке"""
-    await message.answer(f"❌ {error_text}", reply_markup=get_admin_keyboard())
+    if reply_markup is None:
+        is_admin = message.from_user.id in ADMIN_IDS
+        reply_markup = get_admin_keyboard() if is_admin else get_start_keyboard()
+    await message.answer(f"❌ {error_text}", reply_markup=reply_markup)
 
-async def send_success_message(message: types.Message, success_text: str):
+async def send_success_message(message: types.Message, success_text: str, reply_markup=None):
     """Отправка сообщения об успехе"""
-    await message.answer(f"✅ {success_text}", reply_markup=get_admin_keyboard())
+    if reply_markup is None:
+        is_admin = message.from_user.id in ADMIN_IDS
+        reply_markup = get_admin_keyboard() if is_admin else get_start_keyboard()
+    await message.answer(f"✅ {success_text}", reply_markup=reply_markup)

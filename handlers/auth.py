@@ -1,6 +1,7 @@
-from aiogram import Dispatcher, types
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import Command
+from aiogram import Router, F, Bot, Dispatcher, types
+from aiogram.types import Message, BufferedInputFile, ReplyKeyboardRemove
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from io import BytesIO
 
 from database import db
@@ -10,7 +11,11 @@ from utils.keyboards import get_start_keyboard, get_main_keyboard, get_admin_key
 from utils.captcha import generate_captcha_text, generate_captcha_image
 from utils.helpers import send_error_message, send_success_message
 
-async def cmd_start(message: types.Message, state: FSMContext):
+# Создаем роутер для аутентификации
+router = Router()
+
+@router.message(Command("start"))
+async def cmd_start(message: Message, state: FSMContext):
     """Обработчик команды /start"""
     # Генерация капчи
     captcha_text = generate_captcha_text()
@@ -21,42 +26,48 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         "👋 Добро пожаловать в бот для управления ссылками!\n\n"
         "Для начала пройдите проверку, введя текст с картинки:",
-        reply_markup=types.ReplyKeyboardRemove()
+        reply_markup=ReplyKeyboardRemove()
     )
     
+    # В aiogram 3.x для отправки байтов используем BufferedInputFile вместо FSInputFile
     await message.answer_photo(
-        types.InputFile(BytesIO(captcha_image), filename="captcha.png")
+        BufferedInputFile(captcha_image, filename="captcha.png")
     )
-    await AuthStates.waiting_for_captcha.set()
+    await state.set_state(AuthStates.waiting_for_captcha)
 
-async def cmd_login(message: types.Message):
+@router.message(Command("login"))
+@router.message(F.text == "🔑 Авторизоваться")
+async def cmd_login(message: Message, state: FSMContext):
     """Начало процесса авторизации"""
-    await message.answer("Пожалуйста, введите ваш логин:", reply_markup=types.ReplyKeyboardRemove())
-    await AuthStates.waiting_for_username.set()
+    await message.answer("Пожалуйста, введите ваш логин:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(AuthStates.waiting_for_username)
 
-async def process_captcha(message: types.Message, state: FSMContext):
+@router.message(AuthStates.waiting_for_captcha)
+async def process_captcha(message: Message, state: FSMContext):
     """Проверка капчи и запрос логина"""
     user_input = message.text.strip().upper()
     user_data = await state.get_data()
     captcha_text = user_data.get('captcha_text')
     
     if user_input != captcha_text:
-        await send_error_message(message, "Неверный код с картинки. Начните сначала: /start")
-        await state.finish()
+        await send_error_message(message, "Неверный код с картинки. Начните сначала: /start", reply_markup=get_start_keyboard())
+        await state.clear()
         return
     
-    await message.answer("Пожалуйста, введите ваш логин:", reply_markup=types.ReplyKeyboardRemove())
-    await AuthStates.waiting_for_username.set()
+    await message.answer("Пожалуйста, введите ваш логин:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(AuthStates.waiting_for_username)
 
-async def process_username(message: types.Message, state: FSMContext):
+@router.message(AuthStates.waiting_for_username)
+async def process_username(message: Message, state: FSMContext):
     """Обработка ввода имени пользователя"""
     username = message.text.strip()
     await state.update_data(username=username)
     
-    await message.answer("Теперь введите пароль:", reply_markup=types.ReplyKeyboardRemove())
-    await AuthStates.waiting_for_password.set()
+    await message.answer("Теперь введите пароль:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(AuthStates.waiting_for_password)
 
-async def process_password(message: types.Message, state: FSMContext):
+@router.message(AuthStates.waiting_for_password)
+async def process_password(message: Message, state: FSMContext):
     """Обработка ввода пароля и завершение авторизации"""
     password = message.text.strip()
     user_data = await state.get_data()
@@ -66,14 +77,15 @@ async def process_password(message: types.Message, state: FSMContext):
     user_id = db.authenticate_user(username, password)
     
     if not user_id:
-        await send_error_message(message, "Неверный логин или пароль. Попробуйте еще раз: /login")
-        await state.finish()
+        await send_error_message(message, "Неверный логин или пароль. Попробуйте еще раз: /login", reply_markup=get_start_keyboard())
+        await state.clear()
         return
     
     # Обновление Telegram ID пользователя
     db.update_telegram_id(user_id, message.from_user.id)
     
-    keyboard = get_admin_keyboard() if message.from_user.id in ADMIN_IDS else get_main_keyboard()
+    is_admin = message.from_user.id in ADMIN_IDS
+    keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
     
     await message.answer(
         "✅ Успешный вход!\n\n"
@@ -83,9 +95,11 @@ async def process_password(message: types.Message, state: FSMContext):
         "- Выйти из аккаунта: /logout",
         reply_markup=keyboard
     )
-    await state.finish()
+    await state.clear()
 
-async def cmd_logout(message: types.Message):
+@router.message(Command("logout"))
+@router.message(F.text == "🚪 Выйти")
+async def cmd_logout(message: Message):
     """Выход из аккаунта"""
     user = db.get_user_by_telegram_id(message.from_user.id)
     
@@ -97,16 +111,6 @@ async def cmd_logout(message: types.Message):
     db.update_telegram_id(user[0], None)
     await message.answer("Вы успешно вышли из аккаунта.", reply_markup=get_start_keyboard())
 
-def register_auth_handlers(dp: Dispatcher):
+def setup(dp: Dispatcher):
     """Регистрация обработчиков авторизации"""
-    # Команды
-    dp.register_message_handler(cmd_start, Command("start"))
-    dp.register_message_handler(cmd_login, Command("login"))
-    dp.register_message_handler(cmd_login, text="🔑 Авторизоваться")
-    dp.register_message_handler(cmd_logout, Command("logout"))
-    dp.register_message_handler(cmd_logout, text="🚪 Выйти")
-    
-    # Состояния авторизации
-    dp.register_message_handler(process_captcha, state=AuthStates.waiting_for_captcha)
-    dp.register_message_handler(process_username, state=AuthStates.waiting_for_username)
-    dp.register_message_handler(process_password, state=AuthStates.waiting_for_password)
+    dp.include_router(router)

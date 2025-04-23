@@ -1,7 +1,7 @@
-import logging
-from aiogram import Dispatcher, types
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters import Command
+from aiogram import Router, F, Bot, Dispatcher
+from aiogram.types import Message, CallbackQuery
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 
 from database import db
 from models import LinkStates
@@ -9,15 +9,28 @@ from config import ADMIN_IDS
 from utils.keyboards import get_main_keyboard, get_admin_keyboard, get_start_keyboard, get_cancel_keyboard
 from utils.helpers import send_error_message, send_success_message, cancel_state
 
-async def check_auth(message: types.Message) -> bool:
-    """Проверка авторизации пользователя"""
+# Создаем роутер для пользовательских команд
+router = Router()
+
+async def check_auth(message: Message) -> bool:
+    """Проверка авторизации пользователя по сообщению"""
     user = db.get_user_by_telegram_id(message.from_user.id)
     if not user:
         await send_error_message(message, "Вы не авторизованы. Используйте /login", reply_markup=get_start_keyboard())
         return False
     return True
 
-async def cmd_set_link(message: types.Message):
+async def check_auth_callback(callback: CallbackQuery) -> bool:
+    """Проверка авторизации пользователя по callback-запросу"""
+    user = db.get_user_by_telegram_id(callback.from_user.id)
+    if not user:
+        await callback.message.answer("❌ Вы не авторизованы. Используйте /login", reply_markup=get_start_keyboard())
+        return False
+    return True
+
+@router.message(Command("setlink"))
+@router.message(F.text == "🔄 Изменить ссылку")
+async def cmd_set_link(message: Message, state: FSMContext):
     """Обработчик команды /setlink"""
     if not await check_auth(message):
         return
@@ -27,9 +40,25 @@ async def cmd_set_link(message: types.Message):
         "Это может быть название сервиса, домен или любой другой текст.",
         reply_markup=get_cancel_keyboard()
     )
-    await LinkStates.waiting_for_link.set()
+    await state.set_state(LinkStates.waiting_for_link)
 
-async def process_link(message: types.Message, state: FSMContext):
+@router.callback_query(F.data == "set_link")
+async def callback_set_link(callback: CallbackQuery, state: FSMContext):
+    """Обработчик инлайн-кнопки изменения ссылки"""
+    await callback.answer()
+    
+    if not await check_auth_callback(callback):
+        return
+    
+    await callback.message.answer(
+        "Пожалуйста, введите вашу ссылку или текст.\n"
+        "Это может быть название сервиса, домен или любой другой текст.",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(LinkStates.waiting_for_link)
+
+@router.message(LinkStates.waiting_for_link)
+async def process_link(message: Message, state: FSMContext):
     """Обработка ввода ссылки"""
     if await cancel_state(message, state):
         return
@@ -39,17 +68,18 @@ async def process_link(message: types.Message, state: FSMContext):
     
     if not user:
         await send_error_message(message, "Вы не авторизованы. Используйте /login")
-        await state.finish()
+        await state.clear()
         return
     
     # Обновление ссылки в базе данных
     db.update_link(user[0], link)
     
     # После отмены или обновления ссылки показываем соответствующую клавиатуру
-    keyboard = get_admin_keyboard() if message.from_user.id in ADMIN_IDS else get_main_keyboard()
+    is_admin = message.from_user.id in ADMIN_IDS
+    keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
     await send_success_message(message, f"Ваша ссылка успешно обновлена: {link}")
     await message.answer("Выберите действие:", reply_markup=keyboard)
-    await state.finish()
+    await state.clear()
     
     # Возвращаем информацию для отправки уведомления в канал
     return {
@@ -57,7 +87,9 @@ async def process_link(message: types.Message, state: FSMContext):
         "link": link
     }
 
-async def cmd_my_link(message: types.Message):
+@router.message(Command("mylink"))
+@router.message(F.text == "🔗 Моя ссылка")
+async def cmd_my_link(message: Message):
     """Обработчик команды /mylink"""
     if not await check_auth(message):
         return
@@ -65,7 +97,8 @@ async def cmd_my_link(message: types.Message):
     user = db.get_user_by_telegram_id(message.from_user.id)
     link = user[2]
     # Показываем соответствующую клавиатуру в зависимости от роли пользователя
-    keyboard = get_admin_keyboard() if message.from_user.id in ADMIN_IDS else get_main_keyboard()
+    is_admin = message.from_user.id in ADMIN_IDS
+    keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
 
     if link:
         await message.answer(f"🔗 Ваша текущая ссылка: {link}")
@@ -74,13 +107,42 @@ async def cmd_my_link(message: types.Message):
     
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
-def register_user_handlers(dp: Dispatcher):
-    """Регистрация обработчиков пользователя"""
-    # Команды управления ссылкой
-    dp.register_message_handler(cmd_set_link, Command("setlink"))
-    dp.register_message_handler(cmd_set_link, text="🔄 Изменить ссылку")
-    dp.register_message_handler(cmd_my_link, Command("mylink"))
-    dp.register_message_handler(cmd_my_link, text="🔗 Моя ссылка")
+@router.callback_query(F.data == "my_link")
+async def callback_my_link(callback: CallbackQuery):
+    """Обработчик инлайн-кнопки просмотра ссылки"""
+    await callback.answer()
     
-    # Состояния установки ссылки
-    dp.register_message_handler(process_link, state=LinkStates.waiting_for_link)
+    if not await check_auth_callback(callback):
+        return
+    
+    user = db.get_user_by_telegram_id(callback.from_user.id)
+    link = user[2]
+    # Показываем соответствующую клавиатуру в зависимости от роли пользователя
+    is_admin = callback.from_user.id in ADMIN_IDS
+    keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
+
+    if link:
+        await callback.message.answer(f"🔗 Ваша текущая ссылка: {link}")
+    else:
+        await callback.message.answer("У вас еще нет сохраненной ссылки.\nИспользуйте /setlink чтобы добавить ссылку.")
+    
+    await callback.message.answer("Выберите действие:", reply_markup=keyboard)
+
+@router.callback_query(F.data == "logout")
+async def callback_logout(callback: CallbackQuery):
+    """Обработчик инлайн-кнопки выхода"""
+    await callback.answer()
+    
+    user = db.get_user_by_telegram_id(callback.from_user.id)
+    
+    if not user:
+        await callback.message.answer("❌ Вы не авторизованы.", reply_markup=get_start_keyboard())
+        return
+    
+    # Удаление привязки Telegram ID к аккаунту
+    db.update_telegram_id(user[0], None)
+    await callback.message.answer("Вы успешно вышли из аккаунта.", reply_markup=get_start_keyboard())
+
+def setup(dp: Dispatcher):
+    """Регистрация обработчиков пользователя"""
+    dp.include_router(router)
