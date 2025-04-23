@@ -78,7 +78,7 @@ def register_user_handlers(dp: Dispatcher):
     """Регистрация обработчиков пользователя"""
     # Команды управления ссылкой
     dp.register_message_handler(cmd_set_link, Command("setlink"))
-    dp.register_message_handler(cmd_set_link, text="🔄 Добавить ссылку")
+    dp.register_message_handler(cmd_set_link, text="🔄 Изменить ссылку")
     dp.register_message_handler(cmd_my_link, Command("mylink"))
     dp.register_message_handler(cmd_my_link, text="🔗 Моя ссылка")
     
