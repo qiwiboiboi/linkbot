@@ -40,7 +40,6 @@ async def check_admin_and_get_users(message: Message) -> list:
         return None
     return users
 
-
 # Обновите этот обработчик для отображения обоих типов клавиатур
 @router.message(F.text == "👥 Пользователи")
 @router.message(Command("admin"))
@@ -347,6 +346,7 @@ async def process_broadcast_media(message: Message, state: FSMContext):
         reply_markup=get_cancel_keyboard()
     )
     await state.set_state(BroadcastStates.waiting_for_caption)
+
 @router.message(BroadcastStates.waiting_for_caption)
 async def process_broadcast_caption(message: Message, state: FSMContext, bot: Bot):
     """Обработка подписи к медиафайлу и начало рассылки"""
@@ -364,7 +364,6 @@ async def process_broadcast_caption(message: Message, state: FSMContext, bot: Bo
     
     # Начинаем рассылку
     await start_media_broadcast(message, state, bot, file_id, media_type, caption)
-
 
 @router.message(BroadcastStates.waiting_for_message)
 async def process_broadcast_message(message: Message, state: FSMContext, bot: Bot):
@@ -410,15 +409,12 @@ async def process_broadcast_message(message: Message, state: FSMContext, bot: Bo
             except Exception as e:
                 failed_count += 1
                 # Логируем ошибку
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.error(f"Failed to send message to user {username} (ID: {user_id}): {e}")
     
     result_message = f"Рассылка завершена!\n\n📊 Статистика:\n- Отправлено: {sent_count}\n- Не доставлено: {failed_count}"
     await send_success_message(message, result_message)
     await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
     await state.clear()
-
 
 # Добавьте эти обработчики в handlers/admin.py
 @router.message(F.text == "✏️ Изменить приветствие")
@@ -428,12 +424,12 @@ async def cmd_edit_welcome(message: Message, state: FSMContext):
     if not await check_admin(message):
         return
     
-    # Импортируем текущее приветственное сообщение
-    from config import WELCOME_MESSAGE
+    # Получаем текущее приветственное сообщение через функцию
+    from config import get_welcome_message
     
     # Показываем текущее сообщение
     await message.answer(
-        f"Текущее приветственное сообщение:\n\n{WELCOME_MESSAGE}\n\n"
+        f"Текущее приветственное сообщение:\n\n{get_welcome_message()}\n\n"
         f"Введите новый текст приветственного сообщения или нажмите Отмена:",
         reply_markup=get_cancel_keyboard()
     )
@@ -457,21 +453,20 @@ async def process_welcome_message(message: Message, state: FSMContext):
         with open('config.py', 'r', encoding='utf-8') as file:
             config_content = file.read()
         
-        # Находим строку с WELCOME_MESSAGE и заменяем ее
+        # Находим функцию get_welcome_message и заменяем ее содержимое
         import re
-        pattern = r'WELCOME_MESSAGE\s*=\s*f?""".*?"""'
-        replacement = f'WELCOME_MESSAGE = f"""{new_welcome_message}"""'
+        pattern = r'def get_welcome_message\(\):\s*\n\s*return\s*"""[\s\S]*?"""'
+        replacement = f'def get_welcome_message():\n    return """{new_welcome_message}"""'
         new_config = re.sub(pattern, replacement, config_content, flags=re.DOTALL)
         
         # Записываем обновленный контент обратно
         with open('config.py', 'w', encoding='utf-8') as file:
             file.write(new_config)
         
-        # Обновляем переменную в текущей сессии
-        import sys
+        # Перезагружаем модуль config, чтобы изменения вступили в силу немедленно
+        import importlib
         import config
-        from importlib import reload
-        reload(config)
+        importlib.reload(config)
         
         await send_success_message(message, "Приветственное сообщение успешно обновлено!")
         await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
@@ -546,8 +541,6 @@ async def start_media_broadcast(message: Message, state: FSMContext, bot: Bot, f
             except Exception as e:
                 failed_count += 1
                 # Логируем ошибку
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.error(f"Failed to send media to user {username} (ID: {user_id}): {e}")
     
     result_message = f"Рассылка медиафайлов завершена!\n\n📊 Статистика:\n- Отправлено: {sent_count}\n- Не доставлено: {failed_count}"

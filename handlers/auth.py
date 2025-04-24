@@ -7,7 +7,7 @@ import os
 
 from database import db
 from models import AuthStates
-from config import ADMIN_IDS, BOT_NAME, WELCOME_MESSAGE
+from config import ADMIN_IDS, BOT_NAME
 from utils.keyboards import get_start_keyboard, get_main_keyboard, get_admin_keyboard, get_admin_inline_keyboard
 from utils.captcha import generate_captcha_text, generate_captcha_image
 from utils.helpers import send_error_message, send_success_message
@@ -71,16 +71,21 @@ async def cmd_start(event: Message | types.CallbackQuery, state: FSMContext):
     # Отправляем логотип бота, если он есть
     logo_path = "assets/logo.png"  # Путь к логотипу бота
     
+    # Перезагружаем модуль config, чтобы получить актуальное приветственное сообщение
+    import importlib
+    import config
+    importlib.reload(config)
+
     # Проверяем существование файла
     if os.path.exists(logo_path):
         # Отправляем логотип с приветственным сообщением
         await message.answer_photo(
             FSInputFile(logo_path),
-            caption=WELCOME_MESSAGE
+            caption=config.get_welcome_message()
         )
     else:
         # Если логотип не найден, отправляем только текст
-        await message.answer(WELCOME_MESSAGE)
+        await message.answer(config.get_welcome_message())
     
     # Генерация капчи
     captcha_text = generate_captcha_text()
