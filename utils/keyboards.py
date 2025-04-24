@@ -11,21 +11,30 @@ def get_main_keyboard():
     """Инлайн-клавиатура для авторизованных пользователей"""
     kb = [
         [
-            InlineKeyboardButton(text='🔄 Изменить ссылку', callback_data='set_link'),
-            InlineKeyboardButton(text='🔗 Моя ссылка', callback_data='my_link')
+            InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link'),
+            InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link')
+        ],
+        [InlineKeyboardButton(text='🚪 Выйти', callback_data='logout')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def get_admin_inline_keyboard():
+    """Инлайн-клавиатура для базовых действий администраторов"""
+    kb = [
+        [
+            InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link'),
+            InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link')
         ],
         [InlineKeyboardButton(text='🚪 Выйти', callback_data='logout')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 def get_admin_keyboard():
-    """Обычная клавиатура для администраторов"""
+    """Обычная клавиатура для функций администрирования"""
     kb = [
-        [KeyboardButton(text='🔄 Изменить ссылку'), KeyboardButton(text='🔗 Моя ссылка')],
         [KeyboardButton(text='👥 Пользователи'), KeyboardButton(text='🏪 Добавить')],
         [KeyboardButton(text='✏️ Изменить'), KeyboardButton(text='❌ Удалить')],
-        [KeyboardButton(text='📢 Рассылка')],
-        [KeyboardButton(text='🚪 Выйти')]
+        [KeyboardButton(text='📢 Рассылка'), KeyboardButton(text='✏️ Изменить приветствие')]
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 

@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from database import db
 from models import LinkStates
 from config import ADMIN_IDS
-from utils.keyboards import get_main_keyboard, get_admin_keyboard, get_start_keyboard, get_cancel_keyboard
+from utils.keyboards import get_main_keyboard, get_admin_keyboard, get_start_keyboard, get_cancel_keyboard, get_admin_inline_keyboard
 from utils.helpers import send_error_message, send_success_message, cancel_state
 
 # Создаем роутер для пользовательских команд
@@ -29,14 +29,14 @@ async def check_auth_callback(callback: CallbackQuery) -> bool:
     return True
 
 @router.message(Command("setlink"))
-@router.message(F.text == "🔄 Изменить ссылку")
+@router.message(F.text == "🔄 Обновить")
 async def cmd_set_link(message: Message, state: FSMContext):
     """Обработчик команды /setlink"""
     if not await check_auth(message):
         return
     
     await message.answer(
-        "Пожалуйста, введите вашу ссылку или текст.\n"
+        "Введите ваши ссылки и/или текст.\n"
         "Это может быть название сервиса, домен или любой другой текст.",
         reply_markup=get_cancel_keyboard()
     )
@@ -74,11 +74,25 @@ async def process_link(message: Message, state: FSMContext):
     # Обновление ссылки в базе данных
     db.update_link(user[0], link)
     
-    # После отмены или обновления ссылки показываем соответствующую клавиатуру
-    is_admin = message.from_user.id in ADMIN_IDS
-    keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
+    # После обновления ссылки показываем сообщение об успехе
     await send_success_message(message, f"Ваша ссылка успешно обновлена: {link}")
-    await message.answer("Выберите действие:", reply_markup=keyboard)
+    
+    # Показываем соответствующие кнопки в зависимости от роли пользователя
+    is_admin = message.from_user.id in ADMIN_IDS
+    if is_admin:
+        
+        # Затем обычную клавиатуру с функциями администрирования
+        await message.answer(
+            "Функции администрирования:",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        # Для обычного пользователя только инлайн-кнопки
+        await message.answer(
+            "Выберите действие:",
+            reply_markup=get_main_keyboard()
+        )
+    
     await state.clear()
     
     # Возвращаем информацию для отправки уведомления в канал
@@ -86,6 +100,70 @@ async def process_link(message: Message, state: FSMContext):
         "username": user[1],
         "link": link
     }
+
+@router.message(Command("mylink"))
+@router.message(F.text == "🔗 Моё актуальное")
+async def cmd_my_link(message: Message):
+    """Обработчик команды /mylink"""
+    if not await check_auth(message):
+        return
+    
+    user = db.get_user_by_telegram_id(message.from_user.id)
+    link = user[2]
+    
+    if link:
+        await message.answer(f"🔗 Ваша текущая ссылка: {link}")
+    else:
+        await message.answer("У вас еще нет сохраненной ссылки.\nИспользуйте /setlink чтобы добавить ссылку.")
+    
+    # Показываем соответствующие кнопки в зависимости от роли пользователя
+    is_admin = message.from_user.id in ADMIN_IDS
+    if is_admin:
+        # Для админа сначала инлайн-кнопки для работы со ссылками
+        
+        # Затем обычную клавиатуру с функциями администрирования
+        await message.answer(
+            "Функции администрирования:",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        # Для обычного пользователя только инлайн-кнопки
+        await message.answer(
+            "Выберите действие:",
+            reply_markup=get_main_keyboard()
+        )
+
+@router.callback_query(F.data == "my_link")
+async def callback_my_link(callback: CallbackQuery):
+    """Обработчик инлайн-кнопки просмотра ссылки"""
+    await callback.answer()
+    
+    if not await check_auth_callback(callback):
+        return
+    
+    user = db.get_user_by_telegram_id(callback.from_user.id)
+    link = user[2]
+    
+    if link:
+        await callback.message.answer(f"🔗 Ваша текущая ссылка: {link}")
+    else:
+        await callback.message.answer("У вас еще нет сохраненной ссылки.\nИспользуйте /setlink чтобы добавить ссылку.")
+    
+    # Показываем соответствующие кнопки в зависимости от роли пользователя
+    is_admin = callback.from_user.id in ADMIN_IDS
+    if is_admin:
+
+        # Затем обычную клавиатуру с функциями администрирования
+        await callback.message.answer(
+            "Функции администрирования:",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        # Для обычного пользователя только инлайн-кнопки
+        await callback.message.answer(
+            "Выберите действие:",
+            reply_markup=get_main_keyboard()
+        )
 
 @router.message(Command("mylink"))
 @router.message(F.text == "🔗 Моя ссылка")

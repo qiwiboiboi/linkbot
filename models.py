@@ -29,13 +29,12 @@ class DeleteUserStates(StatesGroup):
 
 class BroadcastStates(StatesGroup):
     """Состояния для рассылки сообщений всем пользователям"""
-    waiting_for_message = State()
-
-    # Добавим в models.py новые состояния для расширенной рассылки
-class BroadcastStates(StatesGroup):
-    """Состояния для рассылки сообщений всем пользователям"""
     select_type = State()  # Выбор типа контента (текст, фото, видео и т.д.)
     waiting_for_media = State()  # Ожидание загрузки медиафайла
     waiting_for_caption = State()  # Ожидание подписи к медиафайлу
     waiting_for_message = State()  # Ожидание текстового сообщения
     confirm_sending = State()  # Подтверждение отправки
+
+class WelcomeMessageStates(StatesGroup):
+    """Состояния для редактирования приветственного сообщения"""
+    waiting_for_message = State()

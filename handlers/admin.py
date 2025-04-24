@@ -4,8 +4,15 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
 from database import db
-from models import AddUserStates, EditUserStates, DeleteUserStates, BroadcastStates
-from utils.keyboards import get_admin_keyboard, get_user_action_keyboard, get_cancel_keyboard
+from models import AddUserStates, EditUserStates, DeleteUserStates, BroadcastStates, WelcomeMessageStates
+from utils.keyboards import (
+    get_admin_keyboard, 
+    get_user_action_keyboard, 
+    get_cancel_keyboard,
+    get_admin_inline_keyboard,
+    get_main_keyboard,
+    get_start_keyboard
+)
 from utils.helpers import (
     check_admin,
     cancel_state,
@@ -17,7 +24,7 @@ from utils.helpers import (
 # Дополнительные импорты
 import asyncio
 import logging
-
+import re
 
 # Создаем роутер для админских команд
 router = Router()
@@ -33,7 +40,8 @@ async def check_admin_and_get_users(message: Message) -> list:
         return None
     return users
 
-# Команды просмотра и создания пользователей
+
+# Обновите этот обработчик для отображения обоих типов клавиатур
 @router.message(F.text == "👥 Пользователи")
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
@@ -46,7 +54,12 @@ async def cmd_admin(message: Message):
     if users:
         report += "\nДля добавления нового пользователя используйте команду /adduser"
     
-    await message.answer(report, reply_markup=get_admin_keyboard())
+    await message.answer(report)
+    
+    await message.answer(
+        "Функции администрирования:",
+        reply_markup=get_admin_keyboard()
+    )
 
 @router.message(F.text == "🏪 Добавить")
 @router.message(Command("adduser"))
@@ -377,7 +390,7 @@ async def process_broadcast_message(message: Message, state: FSMContext, bot: Bo
         if telegram_id and telegram_id != message.from_user.id:  # Пропускаем отправителя
             try:
                 # Добавляем маркер, чтобы пользователь знал, что это рассылка
-                formatted_message = f"📢 <b>Сообщение от администратора:</b>\n\n{broadcast_text}"
+                formatted_message = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{broadcast_text}"
                 
                 # Отправляем сообщение без изменения клавиатуры
                 await bot.send_message(
@@ -406,6 +419,71 @@ async def process_broadcast_message(message: Message, state: FSMContext, bot: Bo
     await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
     await state.clear()
 
+
+# Добавьте эти обработчики в handlers/admin.py
+@router.message(F.text == "✏️ Изменить приветствие")
+@router.message(Command("edit_welcome"))
+async def cmd_edit_welcome(message: Message, state: FSMContext):
+    """Обработчик команды для изменения приветственного сообщения"""
+    if not await check_admin(message):
+        return
+    
+    # Импортируем текущее приветственное сообщение
+    from config import WELCOME_MESSAGE
+    
+    # Показываем текущее сообщение
+    await message.answer(
+        f"Текущее приветственное сообщение:\n\n{WELCOME_MESSAGE}\n\n"
+        f"Введите новый текст приветственного сообщения или нажмите Отмена:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(WelcomeMessageStates.waiting_for_message)
+
+@router.message(WelcomeMessageStates.waiting_for_message)
+async def process_welcome_message(message: Message, state: FSMContext):
+    """Обработка нового приветственного сообщения"""
+    if await cancel_state(message, state):
+        return
+    
+    new_welcome_message = message.text.strip()
+    if not new_welcome_message:
+        await send_error_message(message, "Текст сообщения не может быть пустым.", reply_markup=get_admin_keyboard())
+        await state.clear()
+        return
+    
+    # Обновляем приветственное сообщение в config.py
+    try:
+        # Открываем config.py для чтения
+        with open('config.py', 'r', encoding='utf-8') as file:
+            config_content = file.read()
+        
+        # Находим строку с WELCOME_MESSAGE и заменяем ее
+        import re
+        pattern = r'WELCOME_MESSAGE\s*=\s*f?""".*?"""'
+        replacement = f'WELCOME_MESSAGE = f"""{new_welcome_message}"""'
+        new_config = re.sub(pattern, replacement, config_content, flags=re.DOTALL)
+        
+        # Записываем обновленный контент обратно
+        with open('config.py', 'w', encoding='utf-8') as file:
+            file.write(new_config)
+        
+        # Обновляем переменную в текущей сессии
+        import sys
+        import config
+        from importlib import reload
+        reload(config)
+        
+        await send_success_message(message, "Приветственное сообщение успешно обновлено!")
+        await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
+    except Exception as e:
+        logger.error(f"Failed to update welcome message: {e}")
+        await send_error_message(
+            message,
+            f"Не удалось обновить приветственное сообщение: {str(e)}",
+            reply_markup=get_admin_keyboard()
+        )
+    
+    await state.clear()
 
 async def start_media_broadcast(message: Message, state: FSMContext, bot: Bot, file_id: str, media_type: str, caption: str = ""):
     """Функция для рассылки медиафайла всем пользователям"""
