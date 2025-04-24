@@ -4,10 +4,13 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from io import BytesIO
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 from database import db
 from models import AuthStates
-from config import ADMIN_IDS, BOT_NAME
+from config import ADMIN_IDS, BOT_NAME, get_welcome_message
 from utils.keyboards import get_start_keyboard, get_main_keyboard, get_admin_keyboard, get_admin_inline_keyboard
 from utils.captcha import generate_captcha_text, generate_captcha_image
 from utils.helpers import send_error_message, send_success_message
@@ -69,23 +72,35 @@ async def cmd_start(event: Message | types.CallbackQuery, state: FSMContext):
     
     # Далее идет обработка для неавторизованных пользователей
     # Отправляем логотип бота, если он есть
-    logo_path = "assets/logo.png"  # Путь к логотипу бота
+    logo_path = "assets/logo.jpg"  # Путь к логотипу бота
     
-    # Перезагружаем модуль config, чтобы получить актуальное приветственное сообщение
-    import importlib
-    import config
-    importlib.reload(config)
-
     # Проверяем существование файла
     if os.path.exists(logo_path):
-        # Отправляем логотип с приветственным сообщением
-        await message.answer_photo(
-            FSInputFile(logo_path),
-            caption=config.get_welcome_message()
-        )
+        try:
+            # Отправляем логотип с приветственным сообщением
+            await message.answer_photo(
+                FSInputFile(logo_path),
+                caption=get_welcome_message(),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Error sending welcome message with photo: {e}")
+            # В случае ошибки пробуем отправить без разметки
+            await message.answer_photo(
+                FSInputFile(logo_path),
+                caption=get_welcome_message()
+            )
     else:
-        # Если логотип не найден, отправляем только текст
-        await message.answer(config.get_welcome_message())
+        try:
+            # Если логотип не найден, отправляем только текст
+            await message.answer(
+                get_welcome_message(),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Error sending welcome message: {e}")
+            # В случае ошибки пробуем отправить без разметки
+            await message.answer(get_welcome_message())
     
     # Генерация капчи
     captcha_text = generate_captcha_text()
