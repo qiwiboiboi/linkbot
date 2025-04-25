@@ -29,19 +29,12 @@ class DeleteUserStates(StatesGroup):
 
 class BroadcastStates(StatesGroup):
     """Состояния для рассылки сообщений всем пользователям"""
-    select_type = State()  # Выбор типа контента (текст, фото, видео и т.д.)
-    waiting_for_media = State()  # Ожидание загрузки медиафайла
-    waiting_for_caption = State()  # Ожидание подписи к медиафайлу
-    waiting_for_message = State()  # Ожидание текстового сообщения
-    confirm_sending = State()  # Подтверждение отправки
+    waiting_for_content = State()  # Универсальное состояние для любого контента
 
 class BroadcastByIdStates(StatesGroup):
     """Состояния для рассылки сообщений по ID пользователя"""
     waiting_for_user_id = State()  # Ожидание ввода ID пользователя
-    select_type = State()  # Выбор типа контента (текст, фото, видео и т.д.)
-    waiting_for_media = State()  # Ожидание загрузки медиафайла
-    waiting_for_caption = State()  # Ожидание подписи к медиафайлу
-    waiting_for_message = State()  # Ожидание текстового сообщения
+    waiting_for_content = State()  # Универсальное состояние для любого контента
 
 class WelcomeMessageStates(StatesGroup):
     """Состояния для редактирования приветственного сообщения"""

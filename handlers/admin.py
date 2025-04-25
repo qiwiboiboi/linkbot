@@ -41,6 +41,7 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardB
 # Добавьте следующие функции в файл handlers/admin.py
 # (разместите их перед функцией setup(dp))
 
+
 @router.message(F.text == "📩 Рассылка по ID")
 @router.message(Command("broadcast_by_id"))
 async def cmd_broadcast_by_id(message: Message, state: FSMContext):
@@ -100,70 +101,19 @@ async def process_user_id_for_broadcast(message: Message, state: FSMContext):
     # Сохраняем ID пользователя в состоянии
     await state.update_data(target_user_id=user_id, target_username=user[0])
     
-    # Предлагаем выбрать тип контента для рассылки
-    kb = [
-        [KeyboardButton(text='📝 Текст'), KeyboardButton(text='🖼 Фото')],
-        [KeyboardButton(text='🎥 Видео'), KeyboardButton(text='🎵 Аудио')],
-        [KeyboardButton(text='📎 Документ')],
-        [KeyboardButton(text='❌ Отмена')]
-    ]
-    keyboard = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-    
+    # Теперь запрашиваем контент для отправки без выбора типа
     await message.answer(
         f"Выбран пользователь: {user[0]} (ID: {user_id})\n"
-        f"Выберите тип содержимого для отправки:",
-        reply_markup=keyboard
+        f"Отправьте любой контент (текст, фото, видео, аудио, документ), который нужно отправить пользователю:",
+        reply_markup=get_cancel_keyboard()
     )
-    await state.set_state(BroadcastByIdStates.select_type)
+    await state.set_state(BroadcastByIdStates.waiting_for_content)
 
-@router.message(BroadcastByIdStates.select_type)
-async def process_broadcast_by_id_type(message: Message, state: FSMContext):
-    """Обработка выбора типа контента для рассылки по ID"""
+# Обработчик для любого типа контента в рассылке по ID
+@router.message(BroadcastByIdStates.waiting_for_content)
+async def process_broadcast_by_id_content(message: Message, state: FSMContext, bot: Bot):
+    """Обработка любого контента для рассылки по ID"""
     if await cancel_state(message, state):
-        return
-    
-    content_type = message.text.strip()
-    await state.update_data(content_type=content_type)
-    
-    if content_type == "📝 Текст":
-        await message.answer(
-            "Введите текст сообщения для отправки пользователю:",
-            reply_markup=get_cancel_keyboard()
-        )
-        await state.set_state(BroadcastByIdStates.waiting_for_message)
-    elif content_type in ["🖼 Фото", "🎥 Видео", "🎵 Аудио", "📎 Документ"]:
-        content_type_mapping = {
-            "🖼 Фото": "фото",
-            "🎥 Видео": "видео",
-            "🎵 Аудио": "аудио",
-            "📎 Документ": "документ",
-        }
-        
-        await message.answer(
-            f"Отправьте {content_type_mapping[content_type]} для отправки пользователю:",
-            reply_markup=get_cancel_keyboard()
-        )
-        await state.set_state(BroadcastByIdStates.waiting_for_media)
-    else:
-        await message.answer(
-            "Выбран неизвестный тип контента. Пожалуйста, выберите из предложенных вариантов.",
-            reply_markup=get_cancel_keyboard()
-        )
-
-@router.message(BroadcastByIdStates.waiting_for_message)
-async def process_broadcast_by_id_message(message: Message, state: FSMContext, bot: Bot):
-    """Обработка текста сообщения для рассылки по ID"""
-    if await cancel_state(message, state):
-        return
-    
-    broadcast_text = message.text.strip()
-    if not broadcast_text:
-        await send_error_message(
-            message, 
-            "Текст сообщения не может быть пустым.", 
-            reply_markup=get_admin_keyboard()
-        )
-        await state.clear()
         return
     
     # Получаем данные о целевом пользователе из состояния
@@ -186,12 +136,117 @@ async def process_broadcast_by_id_message(message: Message, state: FSMContext, b
     telegram_id = user[1]
     
     try:
-        formatted_message = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{broadcast_text}"
-        await bot.send_message(
-            telegram_id,
-            formatted_message,
-            parse_mode="HTML"
-        )
+        # Определяем тип контента и отправляем соответствующим образом
+        success = False
+        
+        # Текстовое сообщение
+        if message.text and not message.media_group_id:
+            text = message.text.strip()
+            formatted_message = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{text}"
+            await bot.send_message(
+                telegram_id,
+                formatted_message,
+                parse_mode="HTML"
+            )
+            success = True
+        
+        # Фото
+        elif message.photo:
+            # Берем фото максимального размера
+            photo = message.photo[-1]
+            caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+            formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+            
+            await bot.send_photo(
+                telegram_id,
+                photo=photo.file_id,
+                caption=formatted_caption,
+                parse_mode="HTML"
+            )
+            success = True
+        
+        # Видео
+        elif message.video:
+            caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+            formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+            
+            await bot.send_video(
+                telegram_id,
+                video=message.video.file_id,
+                caption=formatted_caption,
+                parse_mode="HTML"
+            )
+            success = True
+        
+        # Аудио
+        elif message.audio:
+            caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+            formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+            
+            await bot.send_audio(
+                telegram_id,
+                audio=message.audio.file_id,
+                caption=formatted_caption,
+                parse_mode="HTML"
+            )
+            success = True
+        
+        # Документ
+        elif message.document:
+            caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+            formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+            
+            await bot.send_document(
+                telegram_id,
+                document=message.document.file_id,
+                caption=formatted_caption,
+                parse_mode="HTML"
+            )
+            success = True
+            
+        # Голосовое сообщение
+        elif message.voice:
+            caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+            formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+            
+            await bot.send_voice(
+                telegram_id,
+                voice=message.voice.file_id,
+                caption=formatted_caption,
+                parse_mode="HTML"
+            )
+            success = True
+            
+        # Стикер
+        elif message.sticker:
+            await bot.send_sticker(
+                telegram_id,
+                sticker=message.sticker.file_id
+            )
+            success = True
+            
+        # Анимация (GIF)
+        elif message.animation:
+            caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+            formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+            
+            await bot.send_animation(
+                telegram_id,
+                animation=message.animation.file_id,
+                caption=formatted_caption,
+                parse_mode="HTML"
+            )
+            success = True
+        
+        # Если не удалось определить тип контента
+        if not success:
+            await send_error_message(
+                message, 
+                f"Не удалось определить тип отправляемого контента.",
+                reply_markup=get_admin_keyboard()
+            )
+            await state.clear()
+            return
         
         await send_success_message(
             message, 
@@ -208,124 +263,154 @@ async def process_broadcast_by_id_message(message: Message, state: FSMContext, b
     
     await state.clear()
 
-@router.message(BroadcastByIdStates.waiting_for_media, F.photo | F.video | F.audio | F.document)
-async def process_broadcast_by_id_media(message: Message, state: FSMContext):
-    """Обработка загруженного медиафайла для рассылки по ID"""
-    if await cancel_state(message, state):
+# Массовая рассылка всем пользователям
+@router.message(F.text == "📢 Рассылка")
+@router.message(Command("broadcast"))
+async def cmd_broadcast(message: Message, state: FSMContext):
+    """Обработчик команды /broadcast для начала рассылки всем пользователям"""
+    if not await check_admin(message):
         return
     
-    user_data = await state.get_data()
-    content_type = user_data.get('content_type')
-    
-    file_id = None
-    media_type = None
-    
-    if message.photo and content_type == "🖼 Фото":
-        file_id = message.photo[-1].file_id
-        media_type = "photo"
-    elif message.video and content_type == "🎥 Видео":
-        file_id = message.video.file_id
-        media_type = "video"
-    elif message.audio and content_type == "🎵 Аудио":
-        file_id = message.audio.file_id
-        media_type = "audio"
-    elif message.document and content_type == "📎 Документ":
-        file_id = message.document.file_id
-        media_type = "document"
-    else:
-        await message.answer(
-            f"Отправленный файл не соответствует выбранному типу контента ({content_type}). "
-            f"Пожалуйста, отправьте правильный тип файла или нажмите Отмена.",
-            reply_markup=get_cancel_keyboard()
-        )
-        return
-    
-    await state.update_data(file_id=file_id, media_type=media_type)
+    # Теперь просто запрашиваем контент для отправки без выбора типа
     await message.answer(
-        "Хотите добавить текст к этому медиафайлу? Если да, введите текст. "
-        "Если нет, отправьте сообщение с текстом 'Без текста'.",
+        "Отправьте любой контент (текст, фото, видео, аудио, документ), "
+        "который будет разослан всем авторизованным пользователям:",
         reply_markup=get_cancel_keyboard()
     )
-    await state.set_state(BroadcastByIdStates.waiting_for_caption)
+    await state.set_state(BroadcastStates.waiting_for_content)
 
-@router.message(BroadcastByIdStates.waiting_for_caption)
-async def process_broadcast_by_id_caption(message: Message, state: FSMContext, bot: Bot):
-    """Обработка подписи к медиафайлу и отправка медиафайла по ID"""
+@router.message(BroadcastStates.waiting_for_content)
+async def process_broadcast_content(message: Message, state: FSMContext, bot: Bot):
+    """Обработка любого контента для массовой рассылки"""
     if await cancel_state(message, state):
         return
     
-    caption = message.text.strip()
-    if caption.lower() == "без текста":
-        caption = ""
+    users = db.get_all_users()
+    sent_count = 0
+    failed_count = 0
     
-    user_data = await state.get_data()
-    file_id = user_data.get('file_id')
-    media_type = user_data.get('media_type')
-    target_user_id = user_data.get('target_user_id')
-    target_username = user_data.get('target_username')
+    progress_msg = await message.answer("⏳ Начинаю рассылку...")
     
-    # Получаем Telegram ID пользователя из базы данных
-    user = db.get_user_by_id(target_user_id)
-    if not user or not user[1]:  # user[1] - это telegram_id
-        await send_error_message(
-            message, 
-            f"Не удалось отправить медиафайл пользователю {target_username} (ID: {target_user_id}). "
-            f"Пользователь не авторизован в боте.",
-            reply_markup=get_admin_keyboard()
-        )
-        await state.clear()
-        return
+    for user_id, username, telegram_id, _ in users:
+        if telegram_id and telegram_id != message.from_user.id:  # Пропускаем отправителя
+            try:
+                success = False
+                
+                # Текстовое сообщение
+                if message.text and not message.media_group_id:
+                    text = message.text.strip()
+                    formatted_message = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{text}"
+                    await bot.send_message(
+                        telegram_id,
+                        formatted_message,
+                        parse_mode="HTML"
+                    )
+                    success = True
+                
+                # Фото
+                elif message.photo:
+                    photo = message.photo[-1]
+                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+                    
+                    await bot.send_photo(
+                        telegram_id,
+                        photo=photo.file_id,
+                        caption=formatted_caption,
+                        parse_mode="HTML"
+                    )
+                    success = True
+                
+                # Видео
+                elif message.video:
+                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+                    
+                    await bot.send_video(
+                        telegram_id,
+                        video=message.video.file_id,
+                        caption=formatted_caption,
+                        parse_mode="HTML"
+                    )
+                    success = True
+                
+                # Аудио
+                elif message.audio:
+                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+                    
+                    await bot.send_audio(
+                        telegram_id,
+                        audio=message.audio.file_id,
+                        caption=formatted_caption,
+                        parse_mode="HTML"
+                    )
+                    success = True
+                
+                # Документ
+                elif message.document:
+                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+                    
+                    await bot.send_document(
+                        telegram_id,
+                        document=message.document.file_id,
+                        caption=formatted_caption,
+                        parse_mode="HTML"
+                    )
+                    success = True
+                
+                # Голосовое сообщение
+                elif message.voice:
+                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+                    
+                    await bot.send_voice(
+                        telegram_id,
+                        voice=message.voice.file_id,
+                        caption=formatted_caption,
+                        parse_mode="HTML"
+                    )
+                    success = True
+                
+                # Стикер
+                elif message.sticker:
+                    await bot.send_sticker(
+                        telegram_id,
+                        sticker=message.sticker.file_id
+                    )
+                    success = True
+                
+                # Анимация (GIF)
+                elif message.animation:
+                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
+                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
+                    
+                    await bot.send_animation(
+                        telegram_id,
+                        animation=message.animation.file_id,
+                        caption=formatted_caption,
+                        parse_mode="HTML"
+                    )
+                    success = True
+                
+                if success:
+                    sent_count += 1
+                else:
+                    failed_count += 1
+                
+                if sent_count % 10 == 0:
+                    await progress_msg.edit_text(f"⏳ Отправлено: {sent_count} сообщений...")
+                
+                await asyncio.sleep(0.1)
+                
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Failed to send message to user {username} (ID: {user_id}): {e}")
     
-    telegram_id = user[1]
-    
-    if caption:
-        formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}"
-    else:
-        formatted_caption = "<b>Сообщение от PARTNERS 🔗</b>"
-    
-    try:
-        if media_type == "photo":
-            await bot.send_photo(
-                telegram_id, 
-                photo=file_id, 
-                caption=formatted_caption,
-                parse_mode="HTML"
-            )
-        elif media_type == "video":
-            await bot.send_video(
-                telegram_id, 
-                video=file_id, 
-                caption=formatted_caption,
-                parse_mode="HTML"
-            )
-        elif media_type == "audio":
-            await bot.send_audio(
-                telegram_id, 
-                audio=file_id, 
-                caption=formatted_caption,
-                parse_mode="HTML"
-            )
-        elif media_type == "document":
-            await bot.send_document(
-                telegram_id, 
-                document=file_id, 
-                caption=formatted_caption,
-                parse_mode="HTML"
-            )
-        
-        await send_success_message(
-            message, 
-            f"Медиафайл успешно отправлен пользователю {target_username} (ID: {target_user_id}).",
-            reply_markup=get_admin_keyboard()
-        )
-    except Exception as e:
-        logger.error(f"Failed to send media to user {target_username} (ID: {target_user_id}): {e}")
-        await send_error_message(
-            message, 
-            f"Ошибка при отправке медиафайла пользователю {target_username} (ID: {target_user_id}): {e}",
-            reply_markup=get_admin_keyboard()
-        )
-    
+    result_message = f"Рассылка завершена!\n\n📊 Статистика:\n- Отправлено: {sent_count}\n- Не доставлено: {failed_count}"
+    await send_success_message(message, result_message)
+    await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
     await state.clear()
 
 async def check_admin_and_get_users(message: Message) -> list:
@@ -466,219 +551,6 @@ async def process_welcome_message(message: Message, state: FSMContext):
             reply_markup=get_admin_keyboard()
         )
     
-    await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
-    await state.clear()
-
-# Рассылка сообщений всем пользователям
-@router.message(F.text == "📢 Рассылка")
-@router.message(Command("broadcast"))
-async def cmd_broadcast(message: Message, state: FSMContext):
-    """Обработчик команды /broadcast для начала рассылки"""
-    if not await check_admin(message):
-        return
-    
-    kb = [
-        [KeyboardButton(text='📝 Текст'), KeyboardButton(text='🖼 Фото')],
-        [KeyboardButton(text='🎥 Видео'), KeyboardButton(text='🎵 Аудио')],
-        [KeyboardButton(text='📎 Документ')],
-        [KeyboardButton(text='❌ Отмена')]
-    ]
-    keyboard = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-    
-    await message.answer(
-        "Выберите тип содержимого для рассылки:",
-        reply_markup=keyboard
-    )
-    await state.set_state(BroadcastStates.select_type)
-
-@router.message(BroadcastStates.select_type)
-async def process_broadcast_type(message: Message, state: FSMContext):
-    """Обработка выбора типа контента для рассылки"""
-    if await cancel_state(message, state):
-        return
-    
-    content_type = message.text.strip()
-    await state.update_data(content_type=content_type)
-    
-    if content_type == "📝 Текст":
-        await message.answer(
-            "Введите текст сообщения для рассылки всем пользователям:",
-            reply_markup=get_cancel_keyboard()
-        )
-        await state.set_state(BroadcastStates.waiting_for_message)
-    elif content_type in ["🖼 Фото", "🎥 Видео", "🎵 Аудио", "📎 Документ"]:
-        content_type_mapping = {
-            "🖼 Фото": "фото",
-            "🎥 Видео": "видео",
-            "🎵 Аудио": "аудио",
-            "📎 Документ": "документ",
-        }
-        
-        await message.answer(
-            f"Отправьте {content_type_mapping[content_type]} для рассылки:",
-            reply_markup=get_cancel_keyboard()
-        )
-        await state.set_state(BroadcastStates.waiting_for_media)
-    else:
-        keyboard = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-        await message.answer(
-            "Выбран неизвестный тип контента. Пожалуйста, выберите из предложенных вариантов.",
-            reply_markup=keyboard
-        )
-
-@router.message(BroadcastStates.waiting_for_message)
-async def process_broadcast_message(message: Message, state: FSMContext, bot: Bot):
-    """Обработка текста сообщения для рассылки"""
-    if await cancel_state(message, state):
-        return
-    
-    broadcast_text = message.text.strip()
-    if not broadcast_text:
-        await send_error_message(message, "Текст сообщения не может быть пустым.", reply_markup=get_admin_keyboard())
-        await state.clear()
-        return
-    
-    users = db.get_all_users()
-    sent_count = 0
-    failed_count = 0
-    
-    progress_msg = await message.answer("⏳ Начинаю рассылку сообщений...")
-    
-    for user_id, username, telegram_id, _ in users:
-        if telegram_id and telegram_id != message.from_user.id:  # Пропускаем отправителя
-            try:
-                formatted_message = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{broadcast_text}"
-                await bot.send_message(
-                    telegram_id,
-                    formatted_message,
-                    parse_mode="HTML"
-                )
-                sent_count += 1
-                
-                if sent_count % 10 == 0:
-                    await progress_msg.edit_text(f"⏳ Отправлено: {sent_count} сообщений...")
-                
-                await asyncio.sleep(0.1)
-                
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"Failed to send message to user {username} (ID: {user_id}): {e}")
-    
-    result_message = f"Рассылка завершена!\n\n📊 Статистика:\n- Отправлено: {sent_count}\n- Не доставлено: {failed_count}"
-    await send_success_message(message, result_message)
-    await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
-    await state.clear()
-
-@router.message(BroadcastStates.waiting_for_media, F.photo | F.video | F.audio | F.document)
-async def process_broadcast_media(message: Message, state: FSMContext):
-    """Обработка загруженного медиафайла для рассылки"""
-    if await cancel_state(message, state):
-        return
-    
-    user_data = await state.get_data()
-    content_type = user_data.get('content_type')
-    
-    file_id = None
-    media_type = None
-    
-    if message.photo and content_type == "🖼 Фото":
-        file_id = message.photo[-1].file_id
-        media_type = "photo"
-    elif message.video and content_type == "🎥 Видео":
-        file_id = message.video.file_id
-        media_type = "video"
-    elif message.audio and content_type == "🎵 Аудио":
-        file_id = message.audio.file_id
-        media_type = "audio"
-    elif message.document and content_type == "📎 Документ":
-        file_id = message.document.file_id
-        media_type = "document"
-    else:
-        await message.answer(
-            f"Отправленный файл не соответствует выбранному типу контента ({content_type}). "
-            f"Пожалуйста, отправьте правильный тип файла или нажмите Отмена.",
-            reply_markup=get_cancel_keyboard()
-        )
-        return
-    
-    await state.update_data(file_id=file_id, media_type=media_type)
-    await message.answer(
-        "Хотите добавить текст к этому медиафайлу? Если да, введите текст. "
-        "Если нет, отправьте сообщение с текстом 'Без текста'.",
-        reply_markup=get_cancel_keyboard()
-    )
-    await state.set_state(BroadcastStates.waiting_for_caption)
-
-@router.message(BroadcastStates.waiting_for_caption)
-async def process_broadcast_caption(message: Message, state: FSMContext, bot: Bot):
-    """Обработка подписи к медиафайлу и начало рассылки"""
-    if await cancel_state(message, state):
-        return
-    
-    caption = message.text.strip()
-    if caption.lower() == "без текста":
-        caption = ""
-    
-    user_data = await state.get_data()
-    file_id = user_data.get('file_id')
-    media_type = user_data.get('media_type')
-    
-    users = db.get_all_users()
-    sent_count = 0
-    failed_count = 0
-    
-    progress_msg = await message.answer("⏳ Начинаю рассылку медиафайлов...")
-    
-    if caption:
-        formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}"
-    else:
-        formatted_caption = "<b>Сообщение от PARTNERS 🔗</b>"
-    
-    for user_id, username, telegram_id, _ in users:
-        if telegram_id and telegram_id != message.from_user.id:
-            try:
-                if media_type == "photo":
-                    await bot.send_photo(
-                        telegram_id, 
-                        photo=file_id, 
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                elif media_type == "video":
-                    await bot.send_video(
-                        telegram_id, 
-                        video=file_id, 
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                elif media_type == "audio":
-                    await bot.send_audio(
-                        telegram_id, 
-                        audio=file_id, 
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                elif media_type == "document":
-                    await bot.send_document(
-                        telegram_id, 
-                        document=file_id, 
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                
-                sent_count += 1
-                
-                if sent_count % 10 == 0:
-                    await progress_msg.edit_text(f"⏳ Отправлено: {sent_count} медиафайлов...")
-                
-                await asyncio.sleep(0.1)
-                
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"Failed to send media to user {username} (ID: {user_id}): {e}")
-    
-    result_message = f"Рассылка медиафайлов завершена!\n\n📊 Статистика:\n- Отправлено: {sent_count}\n- Не доставлено: {failed_count}"
-    await send_success_message(message, result_message)
     await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
     await state.clear()
 
