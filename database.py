@@ -129,7 +129,7 @@ class Database:
             (user_id,)
         )
         return self.cursor.fetchone()
-    
+        
     def close(self):
         """Закрытие соединения с базой данных"""
         self.connection.close()

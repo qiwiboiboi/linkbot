@@ -34,7 +34,8 @@ def get_admin_keyboard():
     kb = [
         [KeyboardButton(text='👥 Пользователи'), KeyboardButton(text='🏪 Добавить')],
         [KeyboardButton(text='✏️ Изменить'), KeyboardButton(text='❌ Удалить')],
-        [KeyboardButton(text='📢 Рассылка'), KeyboardButton(text='✏️ Изменить приветствие')]
+        [KeyboardButton(text='📢 Рассылка'), KeyboardButton(text='📩 Рассылка по ID')],
+        [KeyboardButton(text='✏️ Изменить приветствие')]
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
