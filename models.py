@@ -39,3 +39,12 @@ class BroadcastByIdStates(StatesGroup):
 class WelcomeMessageStates(StatesGroup):
     """Состояния для редактирования приветственного сообщения"""
     waiting_for_message = State()
+
+class ChannelStates(StatesGroup):
+    """Состояния для управления каналами"""
+    waiting_for_channel_type = State()
+    waiting_for_channel_id = State()
+
+class MessageStates(StatesGroup):
+    """Состояния для отправки сообщений пользователями"""
+    waiting_for_message = State()

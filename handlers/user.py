@@ -4,7 +4,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
 from database import db
-from models import LinkStates
+from models import LinkStates, MessageStates
 from config import ADMIN_IDS
 from utils.keyboards import get_main_keyboard, get_admin_keyboard, get_start_keyboard, get_cancel_keyboard, get_admin_inline_keyboard
 from utils.helpers import send_error_message, send_success_message, cancel_state
@@ -100,6 +100,78 @@ async def process_link(message: Message, state: FSMContext):
         "username": user[1],
         "link": link
     }
+
+@router.callback_query(F.data == "send_message")
+async def callback_send_message(callback: CallbackQuery, state: FSMContext):
+    """Обработчик инлайн-кнопки отправки сообщения"""
+    await callback.answer()
+    
+    if not await check_auth_callback(callback):
+        return
+    
+    # Проверяем, настроен ли канал для сообщений
+    messages_channel = db.get_channel("messages")
+    if not messages_channel:
+        await callback.message.answer(
+            "❌ Канал для сообщений не настроен. Обратитесь к администратору.",
+            reply_markup=get_main_keyboard()
+        )
+        return
+    
+    await callback.message.answer(
+        "Введите ваше сообщение:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(MessageStates.waiting_for_message)
+
+@router.message(MessageStates.waiting_for_message)
+async def process_user_message(message: Message, state: FSMContext, bot: Bot):
+    """Обработка сообщения от пользователя"""
+    if await cancel_state(message, state):
+        return
+    
+    user_text = message.text.strip()
+    if not user_text:
+        await send_error_message(message, "Сообщение не может быть пустым")
+        return
+    
+    user = db.get_user_by_telegram_id(message.from_user.id)
+    if not user:
+        await send_error_message(message, "Пользователь не найден")
+        await state.clear()
+        return
+    
+    try:
+        messages_channel = db.get_channel("messages")
+        if not messages_channel:
+            await send_error_message(
+                message,
+                "Канал для сообщений не настроен. Обратитесь к администратору.",
+                reply_markup=get_main_keyboard()
+            )
+            await state.clear()
+            return
+        
+        # Отправляем сообщение в канал
+        await bot.send_message(
+            chat_id=messages_channel,
+            text=f"📨 Новое сообщение от пользователя\n\n"
+                 f"👤 Пользователь: {user[1]}\n"
+                 f"💬 Сообщение:\n{user_text}",
+            parse_mode="HTML"
+        )
+        
+        await send_success_message(message, "Ваше сообщение успешно отправлено!")
+        await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
+        
+    except Exception as e:
+        logger.error(f"Failed to send message to channel: {e}")
+        await send_error_message(
+            message,
+            "Не удалось отправить сообщение. Попробуйте позже или обратитесь к администратору."
+        )
+    
+    await state.clear()
 
 @router.message(Command("mylink"))
 @router.message(F.text == "🔗 Моё актуальное")

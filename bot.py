@@ -6,7 +6,7 @@ import sys
 import traceback
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from config import BOT_TOKEN, CHANNEL_ID
+from config import BOT_TOKEN
 from handlers import register_all_handlers
 from database import db
 
@@ -26,8 +26,14 @@ dp = Dispatcher(storage=storage)
 async def send_channel_notification(username, link):
     """Отправка уведомления в канал о новой ссылке"""
     try:
+        # Получаем ID канала из базы данных
+        channel_id = db.get_channel("links")
+        if not channel_id:
+            logger.warning("Links channel not configured")
+            return
+
         await bot.send_message(
-            CHANNEL_ID,
+            channel_id,
             f"📢 Пользователь обновил ссылки!\n"
             f"👤 Пользователь: {username}\n"
             f"🔗 Ссылки: {link}"

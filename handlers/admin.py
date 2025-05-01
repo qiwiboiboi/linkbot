@@ -3,8 +3,7 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardB
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from config import get_welcome_message, update_welcome_message
-from models import BroadcastByIdStates
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
+from models import BroadcastByIdStates, ChannelStates
 from database import db
 from models import AddUserStates, EditUserStates, DeleteUserStates, BroadcastStates, WelcomeMessageStates
 from utils.keyboards import (
@@ -23,19 +22,85 @@ from utils.helpers import (
     send_success_message
 )
 
-# Дополнительные импорты
 import asyncio
 import logging
 
-# Получаем логгер
 logger = logging.getLogger(__name__)
 
-# Создаем роутер для админских команд
 router = Router()
 
-# Добавьте эти импорты в начало файла, если они еще не импортированы
-from models import BroadcastByIdStates
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
+@router.message(F.text == "📋 Канал для ссылок")
+async def cmd_set_links_channel(message: Message, state: FSMContext):
+    """Обработчик команды установки канала для ссылок"""
+    if not await check_admin(message):
+        return
+
+    await message.answer(
+        "Введите ID канала для публикации ссылок.\n"
+        "Важно: бот должен быть администратором канала.",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.update_data(channel_type="links")
+    await state.set_state(ChannelStates.waiting_for_channel_id)
+
+@router.message(F.text == "💬 Канал для сообщений")
+async def cmd_set_messages_channel(message: Message, state: FSMContext):
+    """Обработчик команды установки канала для сообщений"""
+    if not await check_admin(message):
+        return
+
+    await message.answer(
+        "Введите ID канала для публикации сообщений пользователей.\n"
+        "Важно: бот должен быть администратором канала.",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.update_data(channel_type="messages")
+    await state.set_state(ChannelStates.waiting_for_channel_id)
+
+@router.message(ChannelStates.waiting_for_channel_id)
+async def process_channel_id(message: Message, state: FSMContext, bot: Bot):
+    """Обработка ввода ID канала"""
+    if await cancel_state(message, state):
+        return
+
+    channel_id = message.text.strip()
+    state_data = await state.get_data()
+    channel_type = state_data.get('channel_type')
+
+    try:
+        # Пытаемся отправить тестовое сообщение в канал
+        test_message = await bot.send_message(
+            chat_id=channel_id,
+            text="✅ Тестовое сообщение для проверки прав бота"
+        )
+        # Если сообщение отправлено успешно, удаляем его
+        await test_message.delete()
+
+        # Сохраняем ID канала в базе данных
+        if db.set_channel(channel_type, channel_id):
+            channel_type_text = "ссылок" if channel_type == "links" else "сообщений"
+            await send_success_message(
+                message,
+                f"Канал для {channel_type_text} успешно установлен!"
+            )
+        else:
+            await send_error_message(
+                message,
+                "Не удалось сохранить настройки канала"
+            )
+
+    except Exception as e:
+        await send_error_message(
+            message,
+            "Не удалось установить канал. Убедитесь, что:\n"
+            "1. ID канала указан верно\n"
+            "2. Бот добавлен в канал\n"
+            "3. Бот является администратором канала\n\n"
+            f"Ошибка: {str(e)}"
+        )
+
+    await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
+    await state.clear()
 
 
 # Добавьте следующие функции в файл handlers/admin.py

@@ -14,6 +14,7 @@ def get_main_keyboard():
             InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link'),
             InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link')
         ],
+        [InlineKeyboardButton(text='✉️ Написать сообщение', callback_data='send_message')],
         [InlineKeyboardButton(text='🚪 Выйти', callback_data='logout')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
@@ -35,7 +36,8 @@ def get_admin_keyboard():
         [KeyboardButton(text='👥 Пользователи'), KeyboardButton(text='🏪 Добавить')],
         [KeyboardButton(text='✏️ Изменить'), KeyboardButton(text='❌ Удалить')],
         [KeyboardButton(text='📢 Рассылка'), KeyboardButton(text='📩 Рассылка по ID')],
-        [KeyboardButton(text='✏️ Изменить приветствие')]
+        [KeyboardButton(text='✏️ Изменить приветствие')],
+        [KeyboardButton(text='📋 Канал для ссылок'), KeyboardButton(text='💬 Канал для сообщений')]
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 

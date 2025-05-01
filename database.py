@@ -22,6 +22,14 @@ class Database:
             link TEXT
         )
         ''')
+        
+        self.cursor.execute('''
+        CREATE TABLE IF NOT EXISTS channels (
+            id INTEGER PRIMARY KEY,
+            type TEXT NOT NULL,
+            channel_id TEXT NOT NULL
+        )
+        ''')
         self.connection.commit()
     
     def add_user(self, username, password):
@@ -130,6 +138,32 @@ class Database:
         )
         return self.cursor.fetchone()
         
+    def set_channel(self, channel_type, channel_id):
+        """Установка или обновление канала определенного типа"""
+        try:
+            self.cursor.execute(
+                "INSERT OR REPLACE INTO channels (type, channel_id) VALUES (?, ?)",
+                (channel_type, channel_id)
+            )
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при установке канала: {e}")
+            return False
+
+    def get_channel(self, channel_type):
+        """Получение ID канала по типу"""
+        try:
+            self.cursor.execute(
+                "SELECT channel_id FROM channels WHERE type = ?",
+                (channel_type,)
+            )
+            result = self.cursor.fetchone()
+            return result[0] if result else None
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при получении канала: {e}")
+            return None
+
     def close(self):
         """Закрытие соединения с базой данных"""
         self.connection.close()
