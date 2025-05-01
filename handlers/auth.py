@@ -167,10 +167,11 @@ async def process_password(message: Message, state: FSMContext):
     if not user_id:
         await send_error_message(
             message, 
-            "Неверный логин или пароль. Попробуйте еще раз.", 
-            reply_markup=get_start_button()
+            "Неверный логин или пароль. Попробуйте еще раз."
         )
-        await state.clear()
+        # Return to username input state
+        await message.answer("Введите ваш логин для входа:", reply_markup=ReplyKeyboardRemove())
+        await state.set_state(AuthStates.waiting_for_username)
         return
     
     # Обновление Telegram ID пользователя
