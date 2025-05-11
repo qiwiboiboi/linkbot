@@ -7,6 +7,13 @@ def get_start_keyboard():
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
+def get_start_button():
+    """Инлайн-клавиатура с кнопкой Старт для неавторизованных пользователей"""
+    kb = [
+        [InlineKeyboardButton(text='🚀 Старт', callback_data='start_bot')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
 def get_main_keyboard():
     """Инлайн-клавиатура для авторизованных пользователей"""
     kb = [

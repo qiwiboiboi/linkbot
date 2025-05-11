@@ -1,3 +1,4 @@
+from asyncio.log import logger
 from aiogram import Router, F, Bot, Dispatcher
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
@@ -27,9 +28,10 @@ async def check_auth_callback(callback: CallbackQuery) -> bool:
         await callback.message.answer("❌ Вы не авторизованы. Используйте /login", reply_markup=get_start_keyboard())
         return False
     return True
+# Фрагмент из user.py с исправленными обработчиками для установки ссылки
 
 @router.message(Command("setlink"))
-@router.message(F.text == "🔄 Обновить")
+
 async def cmd_set_link(message: Message, state: FSMContext):
     """Обработчик команды /setlink"""
     if not await check_auth(message):
@@ -74,24 +76,18 @@ async def process_link(message: Message, state: FSMContext):
     # Обновление ссылки в базе данных
     db.update_link(user[0], link)
     
-    # После обновления ссылки показываем сообщение об успехе
-    await send_success_message(message, f"Ваша ссылка успешно обновлена: {link}")
+    from aiogram.types import ReplyKeyboardRemove
     
-    # Показываем соответствующие кнопки в зависимости от роли пользователя
+    # После обновления ссылки показываем сообщение об успехе и убираем кнопку отмены
     is_admin = message.from_user.id in ADMIN_IDS
     if is_admin:
-        
-        # Затем обычную клавиатуру с функциями администрирования
-        await message.answer(
-            "Функции администрирования:",
-            reply_markup=get_admin_keyboard()
-        )
+        # Для админа показываем сообщение и административную клавиатуру
+        await send_success_message(message, f"Ваша ссылка успешно обновлена: {link}", reply_markup=get_admin_keyboard())
     else:
-        # Для обычного пользователя только инлайн-кнопки
-        await message.answer(
-            "Выберите действие:",
-            reply_markup=get_main_keyboard()
-        )
+        # Для обычного пользователя сначала убираем клавиатуру отмены
+        await send_success_message(message, f"Ваша ссылка успешно обновлена: {link}", reply_markup=ReplyKeyboardRemove())
+        # Затем показываем инлайн клавиатуру
+        await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
     
     await state.clear()
     
@@ -123,7 +119,7 @@ async def callback_send_message(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_cancel_keyboard()
     )
     await state.set_state(MessageStates.waiting_for_message)
-
+    
 @router.message(MessageStates.waiting_for_message)
 async def process_user_message(message: Message, state: FSMContext, bot: Bot):
     """Обработка сообщения от пользователя"""
@@ -144,11 +140,13 @@ async def process_user_message(message: Message, state: FSMContext, bot: Bot):
     try:
         messages_channel = db.get_channel("messages")
         if not messages_channel:
+            from aiogram.types import ReplyKeyboardRemove
             await send_error_message(
                 message,
                 "Канал для сообщений не настроен. Обратитесь к администратору.",
-                reply_markup=get_main_keyboard()
+                reply_markup=ReplyKeyboardRemove()
             )
+            await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
             await state.clear()
             return
         
@@ -161,49 +159,29 @@ async def process_user_message(message: Message, state: FSMContext, bot: Bot):
             parse_mode="HTML"
         )
         
-        await send_success_message(message, "Ваше сообщение успешно отправлено!")
+        from aiogram.types import ReplyKeyboardRemove
+        
+        # Отправляем сообщение об успехе и убираем клавиатуру отмены
+        await send_success_message(
+            message, 
+            "Ваше сообщение успешно отправлено!",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        # Затем показываем основное меню
         await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
         
     except Exception as e:
         logger.error(f"Failed to send message to channel: {e}")
+        from aiogram.types import ReplyKeyboardRemove
         await send_error_message(
             message,
-            "Не удалось отправить сообщение. Попробуйте позже или обратитесь к администратору."
+            "Не удалось отправить сообщение. Попробуйте позже или обратитесь к администратору.",
+            reply_markup=ReplyKeyboardRemove()
         )
+        await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
     
     await state.clear()
 
-@router.message(Command("mylink"))
-@router.message(F.text == "🔗 Моё актуальное")
-async def cmd_my_link(message: Message):
-    """Обработчик команды /mylink"""
-    if not await check_auth(message):
-        return
-    
-    user = db.get_user_by_telegram_id(message.from_user.id)
-    link = user[2]
-    
-    if link:
-        await message.answer(f"🔗 Ваша текущая ссылка: {link}")
-    else:
-        await message.answer("У вас еще нет сохраненной ссылки.\nИспользуйте /setlink чтобы добавить ссылку.")
-    
-    # Показываем соответствующие кнопки в зависимости от роли пользователя
-    is_admin = message.from_user.id in ADMIN_IDS
-    if is_admin:
-        # Для админа сначала инлайн-кнопки для работы со ссылками
-        
-        # Затем обычную клавиатуру с функциями администрирования
-        await message.answer(
-            "Функции администрирования:",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        # Для обычного пользователя только инлайн-кнопки
-        await message.answer(
-            "Выберите действие:",
-            reply_markup=get_main_keyboard()
-        )
 
 @router.callback_query(F.data == "my_link")
 async def callback_my_link(callback: CallbackQuery):
@@ -238,7 +216,7 @@ async def callback_my_link(callback: CallbackQuery):
         )
 
 @router.message(Command("mylink"))
-@router.message(F.text == "🔗 Моя ссылка")
+@router.message(F.text == "🔗 Мое актуальное")
 async def cmd_my_link(message: Message):
     """Обработчик команды /mylink"""
     if not await check_auth(message):

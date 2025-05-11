@@ -13,18 +13,35 @@ async def check_admin(message: types.Message) -> bool:
 async def cancel_state(message: types.Message, state: FSMContext) -> bool:
     """Обработка отмены операции"""
     if message.text == "❌ Отмена":
-        is_admin = message.from_user.id in ADMIN_IDS
-        if is_admin:
-            # Для админа отправляем оба типа клавиатур
-            await message.answer("Действие отменено.")
-            await message.answer(
-                "Функции администрирования:", 
-                reply_markup=get_admin_keyboard()
-            )
+        await state.clear()  # Clear state first to ensure no more state handlers run
+        
+        # Проверяем, авторизован ли пользователь
+        from database import db  # Import here to avoid circular imports
+        from aiogram.types import ReplyKeyboardRemove
+        user = db.get_user_by_telegram_id(message.from_user.id)
+        
+        if user:
+            # Пользователь авторизован
+            is_admin = message.from_user.id in ADMIN_IDS
+            
+            if is_admin:
+                # Для админа отправляем сообщение с кнопками администрирования
+                await message.answer(
+                    "Действие отменено.", 
+                    reply_markup=get_admin_keyboard()
+                )
+            else:
+                # Для обычного авторизованного пользователя - сначала убираем reply клавиатуру
+                await message.answer("Действие отменено.", reply_markup=ReplyKeyboardRemove())
+                # Затем отправляем инлайн клавиатуру
+                from utils.keyboards import get_main_keyboard
+                await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
         else:
-            # Для обычного пользователя только стартовую клавиатуру
-            await message.answer("Действие отменено.", reply_markup=get_start_keyboard())
-        await state.clear()
+            # Если не авторизован - сначала убираем reply клавиатуру, затем отправляем инлайн кнопку
+            from utils.keyboards import get_start_button
+            await message.answer("Действие отменено.", reply_markup=ReplyKeyboardRemove())
+            await message.answer("Нажмите Старт для начала работы:", reply_markup=get_start_button())
+        
         return True
     return False
 
@@ -43,17 +60,8 @@ def format_user_list(users: list) -> str:
 async def send_error_message(message: types.Message, error_text: str, reply_markup=None):
     """Отправка сообщения об ошибке"""
     if reply_markup is None:
-        is_admin = message.from_user.id in ADMIN_IDS
-        if is_admin:
-            # Сначала отправляем сообщение об ошибке
-            await message.answer(f"❌ {error_text}")
-            await message.answer(
-                "Функции администрирования:", 
-                reply_markup=get_admin_keyboard()
-            )
-        else:
-            # Для обычного пользователя просто сообщение с кнопкой старт
-            await message.answer(f"❌ {error_text}", reply_markup=get_start_keyboard())
+        # Не отправляем клавиатуру автоматически
+        await message.answer(f"❌ {error_text}")
     else:
         # Если указана конкретная клавиатура, используем ее
         await message.answer(f"❌ {error_text}", reply_markup=reply_markup)
@@ -61,19 +69,8 @@ async def send_error_message(message: types.Message, error_text: str, reply_mark
 async def send_success_message(message: types.Message, success_text: str, reply_markup=None):
     """Отправка сообщения об успехе"""
     if reply_markup is None:
-        is_admin = message.from_user.id in ADMIN_IDS
-        if is_admin:
-            # Сначала отправляем сообщение об успехе
-            await message.answer(f"✅ {success_text}")
-            await message.answer(
-                "Функции администрирования:", 
-                reply_markup=get_admin_keyboard()
-            )
-        else:
-            # Для обычного пользователя сообщение с инлайн-клавиатурой
-            from utils.keyboards import get_main_keyboard
-            await message.answer(f"✅ {success_text}")
-            await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
+        # Не отправляем клавиатуру автоматически
+        await message.answer(f"✅ {success_text}")
     else:
         # Если указана конкретная клавиатура, используем ее
         await message.answer(f"✅ {success_text}", reply_markup=reply_markup)

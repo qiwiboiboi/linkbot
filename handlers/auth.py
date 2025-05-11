@@ -13,7 +13,7 @@ from models import AuthStates
 from config import ADMIN_IDS, BOT_NAME, get_welcome_message
 from utils.keyboards import get_start_keyboard, get_main_keyboard, get_admin_keyboard, get_admin_inline_keyboard
 from utils.captcha import generate_captcha_text, generate_captcha_image
-from utils.helpers import send_error_message, send_success_message
+from utils.helpers import send_error_message, send_success_message, cancel_state
 
 # Создаем роутер для аутентификации
 router = Router()
@@ -24,6 +24,7 @@ def get_start_button():
         [InlineKeyboardButton(text='🚀 Старт', callback_data='start_bot')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
+
 @router.message(CommandStart())
 @router.callback_query(F.data == "start_bot")
 async def cmd_start(event: Message | types.CallbackQuery, state: FSMContext):
