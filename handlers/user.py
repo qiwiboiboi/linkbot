@@ -53,8 +53,14 @@ async def callback_set_link(callback: CallbackQuery, state: FSMContext):
         return
     
     await callback.message.answer(
-        "Пожалуйста, введите вашу ссылку или текст.\n"
-        "Это может быть название сервиса, домен или любой другой текст.",
+        """Введите ссылки в формате:
+http://ссылка|Название
+
+Примеры:
+— http://portal8.info|САЙТ
+— https://t.me/underportal8info| Телеграм канал
+
+Также можете дополнительно указать любую информацию, которую посчитаете нужной.""",
         reply_markup=get_cancel_keyboard()
     )
     await state.set_state(LinkStates.waiting_for_link)
@@ -82,10 +88,10 @@ async def process_link(message: Message, state: FSMContext):
     is_admin = message.from_user.id in ADMIN_IDS
     if is_admin:
         # Для админа показываем сообщение и административную клавиатуру
-        await send_success_message(message, f"Ваша ссылка успешно обновлена: {link}", reply_markup=get_admin_keyboard())
+        await send_success_message(message, f"Актуальное:\n{link}", reply_markup=get_admin_keyboard())
     else:
         # Для обычного пользователя сначала убираем клавиатуру отмены
-        await send_success_message(message, f"Ваша ссылка успешно обновлена: {link}", reply_markup=ReplyKeyboardRemove())
+        await send_success_message(message, f"Актуальное:\n{link}", reply_markup=ReplyKeyboardRemove())
         # Затем показываем инлайн клавиатуру
         await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
     
@@ -195,7 +201,7 @@ async def callback_my_link(callback: CallbackQuery):
     link = user[2]
     
     if link:
-        await callback.message.answer(f"🔗 Ваша текущая ссылка: {link}")
+        await callback.message.answer(f"🔗 Актуальное:\n{link}")
     else:
         await callback.message.answer("У вас еще нет сохраненной ссылки.\nИспользуйте /setlink чтобы добавить ссылку.")
     

@@ -36,7 +36,7 @@ async def send_channel_notification(username, link):
             channel_id,
             f"📢 Пользователь обновил ссылки!\n"
             f"👤 Пользователь: {username}\n"
-            f"🔗 Ссылки: {link}"
+            f"🔗 Ссылки: \n{link}"
         )
         logger.info(f"Notification sent to channel about user {username}")
     except Exception as e:

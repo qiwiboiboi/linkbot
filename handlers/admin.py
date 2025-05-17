@@ -107,7 +107,7 @@ async def process_channel_id(message: Message, state: FSMContext, bot: Bot):
 # (разместите их перед функцией setup(dp))
 
 
-@router.message(F.text == "📩 Рассылка по ID")
+@router.message(F.text == "📩 Сообщение ")
 @router.message(Command("broadcast_by_id"))
 async def cmd_broadcast_by_id(message: Message, state: FSMContext):
     """Обработчик команды /broadcast_by_id для начала рассылки по ID"""

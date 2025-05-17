@@ -42,7 +42,7 @@ def get_admin_keyboard():
     kb = [
         [KeyboardButton(text='👥 Пользователи'), KeyboardButton(text='🏪 Добавить')],
         [KeyboardButton(text='✏️ Изменить'), KeyboardButton(text='❌ Удалить')],
-        [KeyboardButton(text='📢 Рассылка'), KeyboardButton(text='📩 Рассылка по ID')],
+        [KeyboardButton(text='📢 Рассылка'), KeyboardButton(text='📩 Сообщение')],
         [KeyboardButton(text='✏️ Изменить приветствие')],
         [KeyboardButton(text='📋 Канал для ссылок'), KeyboardButton(text='💬 Канал для сообщений')]
     ]
