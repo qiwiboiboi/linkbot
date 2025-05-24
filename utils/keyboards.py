@@ -18,8 +18,8 @@ def get_main_keyboard():
     """Инлайн-клавиатура для авторизованных пользователей"""
     kb = [
         [
-            InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link'),
-            InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link')
+            InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link'),
+            InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link')
         ],
         [InlineKeyboardButton(text='✉️ Написать сообщение', callback_data='send_message')],
         [InlineKeyboardButton(text='🚪 Выйти', callback_data='logout')]
@@ -30,8 +30,8 @@ def get_admin_inline_keyboard():
     """Инлайн-клавиатура для базовых действий администраторов"""
     kb = [
         [
-            InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link'),
-            InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link')
+            InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link'),
+            InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link')
         ],
         [InlineKeyboardButton(text='🚪 Выйти', callback_data='logout')]
     ]
