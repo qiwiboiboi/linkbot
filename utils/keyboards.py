@@ -14,6 +14,13 @@ def get_start_button():
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
+def get_auth_keyboard():
+    """Клавиатура для выбора между авторизацией и регистрацией"""
+    kb = [
+        [KeyboardButton(text='🔑 Авторизоваться'), KeyboardButton(text='📝 Регистрация')]
+    ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
 def get_main_keyboard():
     """Инлайн-клавиатура для авторизованных пользователей"""
     kb = [

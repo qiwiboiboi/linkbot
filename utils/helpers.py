@@ -62,7 +62,7 @@ def format_user_list(users: list) -> str:
         report += f"ID: {user_id} | Логин: {username}\n"
         report += f"   Пароль: {password}\n"
         report += f"   Статус: {'✅ Авторизован' if telegram_id else '❌ Не авторизован'}\n"
-        report += f"   Ссылка: {link or '—'}\n\n"
+        report += f"   Информация: {link or '—'}\n\n"
     return report
 
 async def send_error_message(message: types.Message, error_text: str, reply_markup=None):

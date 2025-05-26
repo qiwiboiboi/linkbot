@@ -10,9 +10,9 @@ logger = logging.getLogger(__name__)
 
 from datetime import datetime
 from database import db
-from models import AuthStates
+from models import AuthStates, RegistrationStates
 from config import ADMIN_IDS, BOT_NAME, get_welcome_message
-from utils.keyboards import get_start_keyboard, get_main_keyboard, get_admin_keyboard, get_admin_inline_keyboard
+from utils.keyboards import get_start_keyboard, get_main_keyboard, get_admin_keyboard, get_admin_inline_keyboard, get_auth_keyboard
 from utils.captcha import generate_captcha_text, generate_captcha_image
 from utils.helpers import send_error_message, send_success_message, cancel_state
 
@@ -72,38 +72,7 @@ async def cmd_start(event: Message | types.CallbackQuery, state: FSMContext):
         
         return  # Завершаем обработку для авторизованных пользователей
     
-    # Далее идет обработка для неавторизованных пользователей
-    # Отправляем логотип бота, если он есть
-    logo_path = "assets/logo.jpg"  # Путь к логотипу бота
-    
-    # Проверяем существование файла
-    if os.path.exists(logo_path):
-        try:
-            # Отправляем логотип с приветственным сообщением
-            await message.answer_photo(
-                FSInputFile(logo_path),
-                caption=get_welcome_message(),
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error(f"Error sending welcome message with photo: {e}")
-            # В случае ошибки пробуем отправить без разметки
-            await message.answer_photo(
-                FSInputFile(logo_path),
-                caption=get_welcome_message()
-            )
-    else:
-        try:
-            # Если логотип не найден, отправляем только текст
-            await message.answer(
-                get_welcome_message(),
-                parse_mode="HTML"
-            )
-        except Exception as e:
-            logger.error(f"Error sending welcome message: {e}")
-            # В случае ошибки пробуем отправить без разметки
-            await message.answer(get_welcome_message())
-    
+    # Для неавторизованных пользователей сразу показываем капчу
     # Генерация капчи
     captcha_text = generate_captcha_text()
     captcha_image = generate_captcha_image(captcha_text)
@@ -120,17 +89,10 @@ async def cmd_start(event: Message | types.CallbackQuery, state: FSMContext):
         BufferedInputFile(captcha_image, filename="captcha.png")
     )
     await state.set_state(AuthStates.waiting_for_captcha)
-    
-@router.message(Command("login"))
-@router.message(F.text == "🔑 Авторизоваться")
-async def cmd_login(message: Message, state: FSMContext):
-    """Начало процесса авторизации"""
-    await message.answer("Введите ваш логин для входа:", reply_markup=ReplyKeyboardRemove())
-    await state.set_state(AuthStates.waiting_for_username)
 
 @router.message(AuthStates.waiting_for_captcha)
 async def process_captcha(message: Message, state: FSMContext):
-    """Проверка капчи и запрос логина"""
+    """Проверка капчи и предложение авторизации или регистрации"""
     user_input = message.text.strip().upper()
     user_data = await state.get_data()
     captcha_text = user_data.get('captcha_text')
@@ -144,6 +106,175 @@ async def process_captcha(message: Message, state: FSMContext):
         await state.clear()
         return
     
+    # После успешной проверки капчи предлагаем выбор
+    await message.answer(
+        "Капча пройдена успешно! Выберите действие:",
+        reply_markup=get_auth_keyboard()
+    )
+    await state.clear()
+
+@router.message(Command("register"))
+@router.message(F.text == "📝 Регистрация")
+async def cmd_register(message: Message, state: FSMContext):
+    """Начало процесса регистрации"""
+    await message.answer(
+        "Придумайте логин для входа в систему:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await state.set_state(RegistrationStates.waiting_for_username)
+
+@router.message(RegistrationStates.waiting_for_username)
+async def process_registration_username(message: Message, state: FSMContext):
+    """Обработка ввода логина при регистрации"""
+    username = message.text.strip()
+    
+    # Проверяем, не занят ли логин
+    if db.get_user_by_username(username):
+        await send_error_message(
+            message,
+            f"Логин '{username}' уже занят. Попробуйте другой."
+        )
+        return
+    
+    # Проверяем длину логина
+    if len(username) < 3:
+        await send_error_message(
+            message,
+            "Логин должен содержать минимум 3 символа."
+        )
+        return
+    
+    if len(username) > 20:
+        await send_error_message(
+            message,
+            "Логин не должен превышать 20 символов."
+        )
+        return
+    
+    await state.update_data(username=username)
+    await message.answer(
+        "Отлично! Теперь придумайте пароль (минимум 6 символов):",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await state.set_state(RegistrationStates.waiting_for_password)
+
+@router.message(RegistrationStates.waiting_for_password)
+async def process_registration_password(message: Message, state: FSMContext):
+    """Обработка ввода пароля при регистрации"""
+    password = message.text.strip()
+    
+    # Проверяем длину пароля
+    if len(password) < 6:
+        await send_error_message(
+            message,
+            "Пароль должен содержать минимум 6 символов."
+        )
+        return
+    
+    await state.update_data(password=password)
+    await message.answer(
+        "Подтвердите пароль, введите его еще раз:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await state.set_state(RegistrationStates.waiting_for_password_confirm)
+
+@router.message(RegistrationStates.waiting_for_password_confirm)
+async def process_registration_password_confirm(message: Message, state: FSMContext, bot: Bot):
+    """Подтверждение пароля и завершение регистрации"""
+    password_confirm = message.text.strip()
+    user_data = await state.get_data()
+    username = user_data.get('username')
+    password = user_data.get('password')
+    
+    # Проверяем совпадение паролей
+    if password != password_confirm:
+        await send_error_message(
+            message,
+            "Пароли не совпадают. Попробуйте еще раз."
+        )
+        await message.answer(
+            "Введите пароль:",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        await state.set_state(RegistrationStates.waiting_for_password)
+        return
+    
+    # Создаем пользователя
+    if db.add_user(username, password):
+        # Получаем ID созданного пользователя
+        user_id = db.authenticate_user(username, password)
+        
+        # Привязываем Telegram ID
+        db.update_telegram_id(user_id, message.from_user.id)
+        
+        # Отправляем уведомление админам о новой регистрации
+        await send_admin_notification_registration(bot, username, message.from_user.full_name, message.from_user.id)
+        
+        # Отправляем сообщение об успешной регистрации
+        await message.answer(
+            f"✅ Регистрация успешно завершена!\n\n"
+            f"Ваш логин: {username}\n"
+            f"Ваш пароль: {password}\n\n"
+            f"Сохраните эти данные для последующего входа."
+        )
+        
+        # Теперь отправляем приветственное сообщение с логотипом
+        logo_path = "assets/logo.jpg"
+        
+        if os.path.exists(logo_path):
+            try:
+                await message.answer_photo(
+                    FSInputFile(logo_path),
+                    caption=get_welcome_message(),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Error sending welcome message with photo: {e}")
+                await message.answer_photo(
+                    FSInputFile(logo_path),
+                    caption=get_welcome_message()
+                )
+        else:
+            try:
+                await message.answer(
+                    get_welcome_message(),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Error sending welcome message: {e}")
+                await message.answer(get_welcome_message())
+        
+        # Определяем, является ли пользователь админом
+        is_admin = message.from_user.id in ADMIN_IDS
+        
+        # Отправляем соответствующие клавиатуры
+        if is_admin:
+            await message.answer(
+                "Управление ссылками:",
+                reply_markup=get_admin_inline_keyboard()
+            )
+            await message.answer(
+                "Функции администрирования:",
+                reply_markup=get_admin_keyboard()
+            )
+        else:
+            await message.answer(
+                "Выберите действие:",
+                reply_markup=get_main_keyboard()
+            )
+        
+        await state.clear()
+    else:
+        await send_error_message(
+            message,
+            "Произошла ошибка при регистрации. Попробуйте позже."
+        )
+        await state.clear()
+    
+@router.message(Command("login"))
+@router.message(F.text == "🔑 Авторизоваться")
+async def cmd_login(message: Message, state: FSMContext):
+    """Начало процесса авторизации"""
     await message.answer("Введите ваш логин для входа:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(AuthStates.waiting_for_username)
 
@@ -155,13 +286,34 @@ async def process_username(message: Message, state: FSMContext):
     
     await message.answer("Теперь введите пароль:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(AuthStates.waiting_for_password)
-# Замените эти две функции в handlers/auth.py
 
 async def send_admin_notification(bot: Bot, username, user_full_name, user_id):
     """Отправка уведомления админу о новой авторизации"""
     try:
         notification_text = (
             f"🔔 Новая авторизация!\n\n"
+            f"👤 Пользователь: {user_full_name}\n"
+            f"🆔 Telegram ID: {user_id}\n"
+            f"📝 Логин: {username}\n"
+            f"⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+        )
+        
+        # Отправляем уведомление всем админам
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(admin_id, notification_text)
+                logger.info(f"Admin notification sent to {admin_id}")
+            except Exception as e:
+                logger.error(f"Failed to send notification to admin {admin_id}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Failed to send admin notification: {e}")
+
+async def send_admin_notification_registration(bot: Bot, username, user_full_name, user_id):
+    """Отправка уведомления админу о новой регистрации"""
+    try:
+        notification_text = (
+            f"🆕 Новая регистрация!\n\n"
             f"👤 Пользователь: {user_full_name}\n"
             f"🆔 Telegram ID: {user_id}\n"
             f"📝 Логин: {username}\n"
@@ -205,13 +357,39 @@ async def process_password(message: Message, state: FSMContext, bot: Bot):
     # Отправляем уведомление админу о новой авторизации
     await send_admin_notification(bot, username, message.from_user.full_name, message.from_user.id)
     
-    is_admin = message.from_user.id in ADMIN_IDS
-    
     # Отправляем сообщение об успешном входе
     await message.answer(
         f"✅ Успешный вход!\n\n"
-        f"Добро пожаловать {message.from_user.full_name}. Советуем входить с аккаунта, который не удалится из-за блоковировок. Логин/пароль можно использовать любой аккуант, так что будьте аккуратны.\n\n"
+        f"Добро пожаловать {message.from_user.full_name}!"
     )
+    
+    # Отправляем приветственное сообщение с логотипом
+    logo_path = "assets/logo.jpg"
+    
+    if os.path.exists(logo_path):
+        try:
+            await message.answer_photo(
+                FSInputFile(logo_path),
+                caption=get_welcome_message(),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Error sending welcome message with photo: {e}")
+            await message.answer_photo(
+                FSInputFile(logo_path),
+                caption=get_welcome_message()
+            )
+    else:
+        try:
+            await message.answer(
+                get_welcome_message(),
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            logger.error(f"Error sending welcome message: {e}")
+            await message.answer(get_welcome_message())
+    
+    is_admin = message.from_user.id in ADMIN_IDS
     
     # Отправляем основные кнопки для работы со ссылками
     if is_admin:

@@ -54,7 +54,7 @@ async def callback_set_link(callback: CallbackQuery, state: FSMContext):
     
     await callback.message.answer(
         """Введите информацию в формате:
-        
+
 http://ссылка|Название
 
 Примеры:
@@ -236,7 +236,7 @@ async def cmd_my_link(message: Message):
     keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
 
     if link:
-        await message.answer(f"🔗 Ваша текущая ссылка: {link}")
+        await message.answer(f"🔗 Ваша текущая информация: {link}")
     else:
         await message.answer("У вас еще нет сохраненной ссылки.\nИспользуйте /setlink чтобы добавить ссылку.")
     
@@ -257,7 +257,7 @@ async def callback_my_link(callback: CallbackQuery):
     keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
 
     if link:
-        await callback.message.answer(f"🔗 Ваша текущая ссылка: {link}")
+        await callback.message.answer(f"🔗 Ваша текущая информация: {link}")
     else:
         await callback.message.answer("У вас еще нет сохраненной ссылки.\nИспользуйте /setlink чтобы добавить ссылку.")
     

@@ -7,6 +7,12 @@ class AuthStates(StatesGroup):
     waiting_for_password = State()
     waiting_for_captcha = State()
 
+class RegistrationStates(StatesGroup):
+    """Состояния для процесса регистрации"""
+    waiting_for_username = State()
+    waiting_for_password = State()
+    waiting_for_password_confirm = State()
+
 class LinkStates(StatesGroup):
     """Состояния для установки ссылки"""
     waiting_for_link = State()
