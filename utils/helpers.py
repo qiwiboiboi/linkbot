@@ -46,14 +46,22 @@ async def cancel_state(message: types.Message, state: FSMContext) -> bool:
     return False
 
 def format_user_list(users: list) -> str:
-    """Форматирование списка пользователей"""
+    """Форматирование списка пользователей с выводом паролей"""
     if not users:
         return "Список пользователей пуст."
     
+    # Для отображения списка пользователей нужно получить пароли
+    from database import db
+    
     report = "📊 Список всех пользователей:\n\n"
     for user_id, username, telegram_id, link in users:
+        # Получаем данные пользователя включая пароль
+        user_data = db.get_user_by_username(username)
+        password = user_data[1] if user_data else "Не найден"  # user_data[1] - это пароль
+        
         report += f"ID: {user_id} | Логин: {username}\n"
-        report += f"   Профиль: @{username}\n"
+        report += f"   Пароль: {password}\n"
+        report += f"   Статус: {'✅ Авторизован' if telegram_id else '❌ Не авторизован'}\n"
         report += f"   Ссылка: {link or '—'}\n\n"
     return report
 

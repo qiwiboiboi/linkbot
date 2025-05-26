@@ -8,6 +8,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from datetime import datetime
 from database import db
 from models import AuthStates
 from config import ADMIN_IDS, BOT_NAME, get_welcome_message
@@ -154,9 +155,32 @@ async def process_username(message: Message, state: FSMContext):
     
     await message.answer("Теперь введите пароль:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(AuthStates.waiting_for_password)
+# Замените эти две функции в handlers/auth.py
+
+async def send_admin_notification(bot: Bot, username, user_full_name, user_id):
+    """Отправка уведомления админу о новой авторизации"""
+    try:
+        notification_text = (
+            f"🔔 Новая авторизация!\n\n"
+            f"👤 Пользователь: {user_full_name}\n"
+            f"🆔 Telegram ID: {user_id}\n"
+            f"📝 Логин: {username}\n"
+            f"⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+        )
+        
+        # Отправляем уведомление всем админам
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(admin_id, notification_text)
+                logger.info(f"Admin notification sent to {admin_id}")
+            except Exception as e:
+                logger.error(f"Failed to send notification to admin {admin_id}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Failed to send admin notification: {e}")
 
 @router.message(AuthStates.waiting_for_password)
-async def process_password(message: Message, state: FSMContext):
+async def process_password(message: Message, state: FSMContext, bot: Bot):
     """Обработка ввода пароля и завершение авторизации"""
     password = message.text.strip()
     user_data = await state.get_data()
@@ -177,6 +201,9 @@ async def process_password(message: Message, state: FSMContext):
     
     # Обновление Telegram ID пользователя
     db.update_telegram_id(user_id, message.from_user.id)
+    
+    # Отправляем уведомление админу о новой авторизации
+    await send_admin_notification(bot, username, message.from_user.full_name, message.from_user.id)
     
     is_admin = message.from_user.id in ADMIN_IDS
     

@@ -328,6 +328,236 @@ async def process_broadcast_by_id_content(message: Message, state: FSMContext, b
     
     await state.clear()
 
+
+# Исправленные методы для handlers/admin.py
+
+@router.message(F.text == "✏️ Изменить")
+@router.message(Command("edituser"))
+async def cmd_edit_user(message: Message, state: FSMContext):
+    """Обработчик команды изменения пользователя"""
+    if not await check_admin(message):
+        return
+    
+    users = db.get_all_users()
+    if not users:
+        await send_error_message(message, "Список пользователей пуст.", reply_markup=get_admin_keyboard())
+        return
+    
+    # Формируем список пользователей
+    user_list = "📋 Список пользователей:\n\n"
+    for user_id, username, telegram_id, link in users:
+        user_list += f"👤 ID: {user_id} | Логин: {username}"
+        if telegram_id:
+            user_list += " | ✅ Авторизован"
+        else:
+            user_list += " | ❌ Не авторизован"
+        user_list += "\n"
+    
+    user_list += "\nВведите ID пользователя для изменения:"
+    
+    await message.answer(user_list, reply_markup=get_cancel_keyboard())
+    await state.set_state(EditUserStates.waiting_for_user_id)
+
+@router.message(EditUserStates.waiting_for_user_id)
+async def process_edit_user_id(message: Message, state: FSMContext):
+    """Обработка ввода ID пользователя для изменения"""
+    if await cancel_state(message, state):
+        return
+    
+    try:
+        user_id = int(message.text.strip())
+    except ValueError:
+        await send_error_message(
+            message, 
+            "Пожалуйста, введите корректный числовой ID пользователя.",
+            reply_markup=get_cancel_keyboard()
+        )
+        return
+    
+    # Проверяем существование пользователя
+    user = db.get_user_by_id(user_id)
+    if not user:
+        await send_error_message(
+            message, 
+            f"Пользователь с ID {user_id} не найден.",
+            reply_markup=get_admin_keyboard()
+        )
+        await state.clear()
+        return
+    
+    # Сохраняем ID пользователя в состоянии
+    await state.update_data(user_id=user_id)
+    
+    # Показываем информацию о пользователе и предлагаем действия
+    username, telegram_id, link = user
+    info_text = (
+        f"Выбран пользователь:\n"
+        f"👤 Логин: {username}\n"
+        f"🆔 ID: {user_id}\n"
+        f"📱 Telegram ID: {telegram_id or 'Не привязан'}\n"
+        f"🔗 Ссылка: {link or 'Не указана'}\n\n"
+        f"Что хотите изменить?"
+    )
+    
+    await message.answer(info_text, reply_markup=get_user_action_keyboard())
+    await state.set_state(EditUserStates.waiting_for_action)
+
+@router.message(EditUserStates.waiting_for_action)
+async def process_edit_action(message: Message, state: FSMContext):
+    """Обработка выбора действия для изменения пользователя"""
+    if await cancel_state(message, state):
+        return
+    
+    action = message.text.strip()
+    
+    if action == "Изменить логин":
+        await message.answer("Введите новый логин:", reply_markup=get_cancel_keyboard())
+        await state.set_state(EditUserStates.waiting_for_new_username)
+    elif action == "Изменить пароль":
+        await message.answer("Введите новый пароль:", reply_markup=get_cancel_keyboard())
+        await state.set_state(EditUserStates.waiting_for_new_password)
+    else:
+        await send_error_message(
+            message, 
+            "Неверный выбор. Выберите действие из предложенных кнопок.",
+            reply_markup=get_user_action_keyboard()
+        )
+
+@router.message(EditUserStates.waiting_for_new_username)
+async def process_new_username_edit(message: Message, state: FSMContext):
+    """Обработка ввода нового логина"""
+    if await cancel_state(message, state):
+        return
+    
+    new_username = message.text.strip()
+    user_data = await state.get_data()
+    user_id = user_data.get('user_id')
+    
+    # Проверяем, не занят ли новый логин
+    existing_user = db.get_user_by_username(new_username)
+    if existing_user and existing_user[0] != user_id:  # existing_user[0] - это ID
+        await send_error_message(
+            message, 
+            f"Логин '{new_username}' уже занят другим пользователем.",
+            reply_markup=get_admin_keyboard()
+        )
+        await state.clear()
+        return
+    
+    # Обновляем логин
+    if db.update_username(user_id, new_username):
+        await send_success_message(
+            message, 
+            f"Логин пользователя (ID: {user_id}) успешно изменен на '{new_username}'",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        await send_error_message(
+            message, 
+            "Не удалось изменить логин пользователя",
+            reply_markup=get_admin_keyboard()
+        )
+    
+    await state.clear()
+
+@router.message(EditUserStates.waiting_for_new_password)
+async def process_new_password_edit(message: Message, state: FSMContext):
+    """Обработка ввода нового пароля"""
+    if await cancel_state(message, state):
+        return
+    
+    new_password = message.text.strip()
+    user_data = await state.get_data()
+    user_id = user_data.get('user_id')
+    
+    # Обновляем пароль
+    if db.update_password(user_id, new_password):
+        await send_success_message(
+            message, 
+            f"Пароль пользователя (ID: {user_id}) успешно изменен на '{new_password}'",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        await send_error_message(
+            message, 
+            "Не удалось изменить пароль пользователя",
+            reply_markup=get_admin_keyboard()
+        )
+    
+    await state.clear()
+
+@router.message(F.text == "❌ Удалить")
+@router.message(Command("deleteuser"))
+async def cmd_delete_user(message: Message, state: FSMContext):
+    """Обработчик команды удаления пользователя"""
+    if not await check_admin(message):
+        return
+    
+    users = db.get_all_users()
+    if not users:
+        await send_error_message(message, "Список пользователей пуст.", reply_markup=get_admin_keyboard())
+        return
+    
+    # Формируем список пользователей
+    user_list = "📋 Список пользователей:\n\n"
+    for user_id, username, telegram_id, link in users:
+        user_list += f"👤 ID: {user_id} | Логин: {username}"
+        if telegram_id:
+            user_list += " | ✅ Авторизован"
+        else:
+            user_list += " | ❌ Не авторизован"
+        user_list += "\n"
+    
+    user_list += "\nВведите ID пользователя для удаления:"
+    
+    await message.answer(user_list, reply_markup=get_cancel_keyboard())
+    await state.set_state(DeleteUserStates.waiting_for_user_id)
+
+@router.message(DeleteUserStates.waiting_for_user_id)
+async def process_delete_user_id(message: Message, state: FSMContext):
+    """Обработка ввода ID пользователя для удаления"""
+    if await cancel_state(message, state):
+        return
+    
+    try:
+        user_id = int(message.text.strip())
+    except ValueError:
+        await send_error_message(
+            message, 
+            "Пожалуйста, введите корректный числовой ID пользователя.",
+            reply_markup=get_cancel_keyboard()
+        )
+        return
+    
+    # Проверяем существование пользователя
+    user = db.get_user_by_id(user_id)
+    if not user:
+        await send_error_message(
+            message, 
+            f"Пользователь с ID {user_id} не найден.",
+            reply_markup=get_admin_keyboard()
+        )
+        await state.clear()
+        return
+    
+    username = user[0]
+    
+    # Удаляем пользователя
+    if db.delete_user(user_id):
+        await send_success_message(
+            message, 
+            f"Пользователь '{username}' (ID: {user_id}) успешно удален",
+            reply_markup=get_admin_keyboard()
+        )
+    else:
+        await send_error_message(
+            message, 
+            f"Не удалось удалить пользователя '{username}' (ID: {user_id})",
+            reply_markup=get_admin_keyboard()
+        )
+    
+    await state.clear()
+
 # Массовая рассылка всем пользователям
 @router.message(F.text == "📢 Рассылка")
 @router.message(Command("broadcast"))

@@ -53,14 +53,15 @@ async def callback_set_link(callback: CallbackQuery, state: FSMContext):
         return
     
     await callback.message.answer(
-        """Введите ссылки в формате:
+        """Введите информацию в формате:
+        
 http://ссылка|Название
 
 Примеры:
 — http://portal8.info|САЙТ
-— https://t.me/underportal8info| Телеграм канал
+— https://t.me/underportal8info|Телеграм канал
 
-Также можете дополнительно указать любую информацию, которую посчитаете нужной.""",
+Также можете дополнительно указать любую информацию, которую посчитаете нужной, либо написать в ЛС через меню бота.""",
         reply_markup=get_cancel_keyboard()
     )
     await state.set_state(LinkStates.waiting_for_link)
