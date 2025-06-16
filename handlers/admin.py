@@ -103,9 +103,32 @@ async def process_channel_id(message: Message, state: FSMContext, bot: Bot):
     await state.clear()
 
 
-# Добавьте следующие функции в файл handlers/admin.py
-# (разместите их перед функцией setup(dp))
+def get_display_name(user_data, username):
+    """Безопасное получение отображаемого имени пользователя"""
+    # Безопасная распаковка данных
+    user_id = user_data[0]
+    username = user_data[1]
+    telegram_id = user_data[2] if len(user_data) > 2 else None
+    link = user_data[3] if len(user_data) > 3 else None
+    full_name = user_data[4] if len(user_data) > 4 else None
+    
+    # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
+    if full_name and full_name.strip():
+        return f"{full_name} (@{username})"
+    else:
+        return username
 
+def get_display_name_from_user_info(user_info, username):
+    """Безопасное получение отображаемого имени из данных пользователя по ID"""
+    # user_info может быть (username, telegram_id, link) или (username, telegram_id, link, full_name)
+    if len(user_info) >= 4:  # Есть поле full_name
+        full_name = user_info[3]
+        if full_name and full_name.strip():
+            return f"{full_name} (@{username})"
+    
+    return username
+
+# Обновленная функция для отображения списка пользователей с именами
 
 @router.message(F.text == "📩 Сообщение")
 @router.message(Command("broadcast_by_id"))
@@ -120,10 +143,23 @@ async def cmd_broadcast_by_id(message: Message, state: FSMContext):
         await send_error_message(message, "Список пользователей пуст.", reply_markup=get_admin_keyboard())
         return
     
-    # Формируем список пользователей с их ID
+    # Формируем список пользователей с их ID и именами
     user_list = "📋 Список пользователей:\n\n"
-    for user_id, username, telegram_id, link in users:
-        user_list += f"👤 ID: {user_id} | Логин: {username}"
+    for user_data in users:
+        # Безопасная распаковка данных
+        user_id = user_data[0]
+        username = user_data[1]
+        telegram_id = user_data[2] if len(user_data) > 2 else None
+        link = user_data[3] if len(user_data) > 3 else None
+        full_name = user_data[4] if len(user_data) > 4 else None
+        
+        # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
+        if full_name and full_name.strip():
+            display_name = f"{full_name} (@{username})"
+        else:
+            display_name = username
+        
+        user_list += f"👤 ID: {user_id} | {display_name}"
         if telegram_id:
             user_list += f" | ✅ Авторизован (TG ID: {telegram_id})"
         else:
@@ -235,10 +271,23 @@ async def cmd_edit_user(message: Message, state: FSMContext):
         await send_error_message(message, "Список пользователей пуст.", reply_markup=get_admin_keyboard())
         return
     
-    # Формируем список пользователей
+    # Формируем список пользователей с именами
     user_list = "📋 Список пользователей:\n\n"
-    for user_id, username, telegram_id, link in users:
-        user_list += f"👤 ID: {user_id} | Логин: {username}"
+    for user_data in users:
+        # Безопасная распаковка данных
+        user_id = user_data[0]
+        username = user_data[1]
+        telegram_id = user_data[2] if len(user_data) > 2 else None
+        link = user_data[3] if len(user_data) > 3 else None
+        full_name = user_data[4] if len(user_data) > 4 else None
+        
+        # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
+        if full_name and full_name.strip():
+            display_name = f"{full_name} (@{username})"
+        else:
+            display_name = username
+        
+        user_list += f"👤 ID: {user_id} | {display_name}"
         if telegram_id:
             user_list += " | ✅ Авторизован"
         else:
@@ -281,10 +330,22 @@ async def process_edit_user_id(message: Message, state: FSMContext):
     await state.update_data(user_id=user_id)
     
     # Показываем информацию о пользователе и предлагаем действия
-    username, telegram_id, link = user
+    # Безопасная распаковка данных пользователя
+    username = user[0]
+    telegram_id = user[1] if len(user) > 1 else None
+    link = user[2] if len(user) > 2 else None
+    full_name = user[3] if len(user) > 3 else None
+    
+    # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
+    if full_name and full_name.strip():
+        display_name = f"{full_name} (@{username})"
+    else:
+        display_name = username
+    
     info_text = (
         f"Выбран пользователь:\n"
-        f"👤 Логин: {username}\n"
+        f"👤 Имя: {display_name}\n"
+        f"📝 Логин: {username}\n"
         f"🆔 ID: {user_id}\n"
         f"📱 Telegram ID: {telegram_id or 'Не привязан'}\n"
         f"🔗 Информация: {link or 'Не указана'}\n\n"
@@ -293,6 +354,7 @@ async def process_edit_user_id(message: Message, state: FSMContext):
     
     await message.answer(info_text, reply_markup=get_user_action_keyboard())
     await state.set_state(EditUserStates.waiting_for_action)
+
 
 @router.message(EditUserStates.waiting_for_action)
 async def process_edit_action(message: Message, state: FSMContext):
@@ -390,10 +452,23 @@ async def cmd_delete_user(message: Message, state: FSMContext):
         await send_error_message(message, "Список пользователей пуст.", reply_markup=get_admin_keyboard())
         return
     
-    # Формируем список пользователей
+    # Формируем список пользователей с именами
     user_list = "📋 Список пользователей:\n\n"
-    for user_id, username, telegram_id, link in users:
-        user_list += f"👤 ID: {user_id} | Логин: {username}"
+    for user_data in users:
+        # Безопасная распаковка данных
+        user_id = user_data[0]
+        username = user_data[1]
+        telegram_id = user_data[2] if len(user_data) > 2 else None
+        link = user_data[3] if len(user_data) > 3 else None
+        full_name = user_data[4] if len(user_data) > 4 else None
+        
+        # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
+        if full_name and full_name.strip():
+            display_name = f"{full_name} (@{username})"
+        else:
+            display_name = username
+        
+        user_list += f"👤 ID: {user_id} | {display_name}"
         if telegram_id:
             user_list += " | ✅ Авторизован"
         else:
@@ -432,19 +507,29 @@ async def process_delete_user_id(message: Message, state: FSMContext):
         await state.clear()
         return
     
+    # Безопасная распаковка данных пользователя
     username = user[0]
+    telegram_id = user[1] if len(user) > 1 else None
+    link = user[2] if len(user) > 2 else None
+    full_name = user[3] if len(user) > 3 else None
+    
+    # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
+    if full_name and full_name.strip():
+        display_name = f"{full_name} (@{username})"
+    else:
+        display_name = username
     
     # Удаляем пользователя
     if db.delete_user(user_id):
         await send_success_message(
             message, 
-            f"Пользователь '{username}' (ID: {user_id}) успешно удален",
+            f"Пользователь '{display_name}' (ID: {user_id}) успешно удален",
             reply_markup=get_admin_keyboard()
         )
     else:
         await send_error_message(
             message, 
-            f"Не удалось удалить пользователя '{username}' (ID: {user_id})",
+            f"Не удалось удалить пользователя '{display_name}' (ID: {user_id})",
             reply_markup=get_admin_keyboard()
         )
     

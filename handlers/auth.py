@@ -199,18 +199,21 @@ async def process_registration_password_confirm(message: Message, state: FSMCont
         await state.set_state(RegistrationStates.waiting_for_password)
         return
     
-    # Создаем пользователя
-    if db.add_user(username, password):
+    # Получаем полное имя пользователя из Telegram
+    full_name = message.from_user.full_name
+    
+    # Создаем пользователя с полным именем
+    if db.add_user(username, password, full_name):
         # Получаем ID созданного пользователя
         user_id = db.authenticate_user(username, password)
         
-        # Привязываем Telegram ID
-        db.update_telegram_id(user_id, message.from_user.id)
+        # Привязываем Telegram ID с полным именем
+        db.update_telegram_id(user_id, message.from_user.id, full_name)
         
         # Отправляем уведомление админам о новой регистрации
-        await send_admin_notification_registration(bot, username, message.from_user.full_name, message.from_user.id)
+        await send_admin_notification_registration(bot, username, full_name, message.from_user.id)
         
-        # Отправляем сообщение об успешной регистрации
+        # Остальной код остается без изменений...
         await message.answer(
             f"✅ Регистрация успешно завершена!\n\n"
             f"Ваш логин: {username}\n"
@@ -351,16 +354,19 @@ async def process_password(message: Message, state: FSMContext, bot: Bot):
         await state.set_state(AuthStates.waiting_for_username)
         return
     
-    # Обновление Telegram ID пользователя
-    db.update_telegram_id(user_id, message.from_user.id)
+    # Получаем полное имя пользователя из Telegram
+    full_name = message.from_user.full_name
+    
+    # Обновление Telegram ID пользователя с полным именем
+    db.update_telegram_id(user_id, message.from_user.id, full_name)
     
     # Отправляем уведомление админу о новой авторизации
-    await send_admin_notification(bot, username, message.from_user.full_name, message.from_user.id)
+    await send_admin_notification(bot, username, full_name, message.from_user.id)
     
-    # Отправляем сообщение об успешном входе
+    # Остальной код остается без изменений...
     await message.answer(
         f"✅ Успешный вход!\n\n"
-        f"Добро пожаловать {message.from_user.full_name}!"
+        f"Добро пожаловать {full_name}!"
     )
     
     # Отправляем приветственное сообщение с логотипом

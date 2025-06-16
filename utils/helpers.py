@@ -1,3 +1,5 @@
+# Обновление utils/helpers.py
+
 from aiogram import types
 from aiogram.fsm.context import FSMContext
 from config import ADMIN_IDS
@@ -46,7 +48,7 @@ async def cancel_state(message: types.Message, state: FSMContext) -> bool:
     return False
 
 def format_user_list(users: list) -> str:
-    """Форматирование списка пользователей с выводом паролей"""
+    """Форматирование списка пользователей с выводом паролей и полных имен"""
     if not users:
         return "Список пользователей пуст."
     
@@ -54,14 +56,33 @@ def format_user_list(users: list) -> str:
     from database import db
     
     report = "📊 Список всех пользователей:\n\n"
-    for user_id, username, telegram_id, link in users:
-        # Получаем данные пользователя включая пароль
-        user_data = db.get_user_by_username(username)
-        password = user_data[1] if user_data else "Не найден"  # user_data[1] - это пароль
+    for user_data in users:
+        # Безопасная распаковка данных с учетом возможного отсутствия поля full_name
+        user_id = user_data[0]
+        username = user_data[1]
+        telegram_id = user_data[2] if len(user_data) > 2 else None
+        link = user_data[3] if len(user_data) > 3 else None
+        full_name = user_data[4] if len(user_data) > 4 else None
         
-        report += f"ID: {user_id} | Логин: {username}\n"
+        # Получаем данные пользователя включая пароль
+        user_db_data = db.get_user_by_username(username)
+        password = user_db_data[1] if user_db_data else "Не найден"
+        
+        # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
+        if full_name and full_name.strip():
+            display_name = f"{full_name} (@{username})"
+        else:
+            display_name = username
+        
+        report += f"ID: {user_id} | {display_name}\n"
+        report += f"   Логин: {username}\n"
         report += f"   Пароль: {password}\n"
-        report += f"   Статус: {'✅ Авторизован' if telegram_id else '❌ Не авторизован'}\n"
+        
+        if telegram_id:
+            report += f"   Статус: ✅ Авторизован (TG ID: {telegram_id})\n"
+        else:
+            report += f"   Статус: ❌ Не авторизован\n"
+            
         report += f"   Информация: {link or '—'}\n\n"
     return report
 
