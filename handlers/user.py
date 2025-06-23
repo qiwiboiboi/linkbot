@@ -57,10 +57,6 @@ async def callback_set_link(callback: CallbackQuery, state: FSMContext):
 
 http://ссылка|Название
 
-Примеры:
-— http://portal8.info|САЙТ
-— https://t.me/underportal8info|Телеграм канал
-
 Также можете дополнительно указать любую информацию, которую посчитаете нужной, либо написать в ЛС через меню бота.""",
         reply_markup=get_cancel_keyboard()
     )
