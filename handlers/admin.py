@@ -561,126 +561,191 @@ async def process_broadcast_content(message: Message, state: FSMContext, bot: Bo
     sent_count = 0
     failed_count = 0
     
+    logger.info(f"Starting broadcast. Total users: {len(users)}")
     progress_msg = await message.answer("⏳ Начинаю рассылку...")
     
-    for user_id, username, telegram_id, _ in users:
-        if telegram_id and telegram_id != message.from_user.id:  # Пропускаем отправителя
-            try:
-                success = False
-                
-                # Текстовое сообщение
-                if message.text and not message.media_group_id:
-                    text = message.text.strip()
-                    formatted_message = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{text}"
-                    await bot.send_message(
-                        telegram_id,
-                        formatted_message,
-                        parse_mode="HTML"
-                    )
-                    success = True
-                
-                # Фото
-                elif message.photo:
-                    photo = message.photo[-1]
-                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
-                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
-                    
-                    await bot.send_photo(
-                        telegram_id,
-                        photo=photo.file_id,
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                    success = True
-                
-                # Видео
-                elif message.video:
-                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
-                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
-                    
-                    await bot.send_video(
-                        telegram_id,
-                        video=message.video.file_id,
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                    success = True
-                
-                # Аудио
-                elif message.audio:
-                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
-                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
-                    
-                    await bot.send_audio(
-                        telegram_id,
-                        audio=message.audio.file_id,
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                    success = True
-                
-                # Документ
-                elif message.document:
-                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
-                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
-                    
-                    await bot.send_document(
-                        telegram_id,
-                        document=message.document.file_id,
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                    success = True
-                
-                # Голосовое сообщение
-                elif message.voice:
-                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
-                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
-                    
-                    await bot.send_voice(
-                        telegram_id,
-                        voice=message.voice.file_id,
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                    success = True
-                
-                # Стикер
-                elif message.sticker:
-                    await bot.send_sticker(
-                        telegram_id,
-                        sticker=message.sticker.file_id
-                    )
-                    success = True
-                
-                # Анимация (GIF)
-                elif message.animation:
-                    caption = message.caption or "<b>Сообщение от PARTNERS 🔗</b>"
-                    formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if message.caption else caption
-                    
-                    await bot.send_animation(
-                        telegram_id,
-                        animation=message.animation.file_id,
-                        caption=formatted_caption,
-                        parse_mode="HTML"
-                    )
-                    success = True
-                
-                if success:
-                    sent_count += 1
-                else:
-                    failed_count += 1
-                
-                if sent_count % 10 == 0:
-                    await progress_msg.edit_text(f"⏳ Отправлено: {sent_count} сообщений...")
-                
-                await asyncio.sleep(0.1)
-                
-            except Exception as e:
-                failed_count += 1
-                logger.error(f"Failed to send message to user {username} (ID: {user_id}): {e}")
+    # Отладочная информация
+    await message.answer(f"🔍 Найдено пользователей: {len(users)}")
     
-    result_message = f"Рассылка завершена!\n\n📊 Статистика:\n- Отправлено: {sent_count}\n- Не доставлено: {failed_count}"
+    for user_data in users:
+        try:
+            # Безопасная распаковка данных пользователей
+            user_id = user_data[0]
+            username = user_data[1]
+            telegram_id = user_data[2] if len(user_data) > 2 else None
+            
+            logger.info(f"Processing user: {username}, TG ID: {telegram_id}")
+            
+            # Пропускаем пользователей без telegram_id и отправителя
+            if not telegram_id:
+                logger.info(f"Skipping user {username} - no telegram_id")
+                continue
+                
+            if telegram_id == message.from_user.id:
+                logger.info(f"Skipping sender {username}")
+                continue
+            
+            # Попытка отправки сообщения
+            success = False
+            
+            # Текстовое сообщение
+            if message.text and not message.media_group_id:
+                text = message.text.strip()
+                formatted_message = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{text}"
+                await bot.send_message(
+                    telegram_id,
+                    formatted_message,
+                    parse_mode="HTML"
+                )
+                success = True
+            
+            # Фото
+            elif message.photo:
+                photo = message.photo[-1]
+                caption = message.caption or ""
+                formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if caption else "<b>Сообщение от PARTNERS 🔗</b>"
+                
+                await bot.send_photo(
+                    telegram_id,
+                    photo=photo.file_id,
+                    caption=formatted_caption,
+                    parse_mode="HTML"
+                )
+                success = True
+            
+            # Видео
+            elif message.video:
+                caption = message.caption or ""
+                formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if caption else "<b>Сообщение от PARTNERS 🔗</b>"
+                
+                await bot.send_video(
+                    telegram_id,
+                    video=message.video.file_id,
+                    caption=formatted_caption,
+                    parse_mode="HTML"
+                )
+                success = True
+            
+            # Аудио
+            elif message.audio:
+                caption = message.caption or ""
+                formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if caption else "<b>Сообщение от PARTNERS 🔗</b>"
+                
+                await bot.send_audio(
+                    telegram_id,
+                    audio=message.audio.file_id,
+                    caption=formatted_caption,
+                    parse_mode="HTML"
+                )
+                success = True
+            
+            # Документ
+            elif message.document:
+                caption = message.caption or ""
+                formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if caption else "<b>Сообщение от PARTNERS 🔗</b>"
+                
+                await bot.send_document(
+                    telegram_id,
+                    document=message.document.file_id,
+                    caption=formatted_caption,
+                    parse_mode="HTML"
+                )
+                success = True
+            
+            # Голосовое сообщение
+            elif message.voice:
+                await bot.send_message(
+                    telegram_id,
+                    "<b>Сообщение от PARTNERS 🔗</b>",
+                    parse_mode="HTML"
+                )
+                await bot.send_voice(
+                    telegram_id,
+                    voice=message.voice.file_id
+                )
+                success = True
+            
+            # Стикер
+            elif message.sticker:
+                await bot.send_message(
+                    telegram_id,
+                    "<b>Сообщение от PARTNERS 🔗</b>",
+                    parse_mode="HTML"
+                )
+                await bot.send_sticker(
+                    telegram_id,
+                    sticker=message.sticker.file_id
+                )
+                success = True
+            
+            # Анимация (GIF)
+            elif message.animation:
+                caption = message.caption or ""
+                formatted_caption = f"<b>Сообщение от PARTNERS 🔗:</b>\n\n{caption}" if caption else "<b>Сообщение от PARTNERS 🔗</b>"
+                
+                await bot.send_animation(
+                    telegram_id,
+                    animation=message.animation.file_id,
+                    caption=formatted_caption,
+                    parse_mode="HTML"
+                )
+                success = True
+            
+            # Видеосообщение
+            elif message.video_note:
+                await bot.send_message(
+                    telegram_id,
+                    "<b>Сообщение от PARTNERS 🔗</b>",
+                    parse_mode="HTML"
+                )
+                await bot.send_video_note(
+                    telegram_id,
+                    video_note=message.video_note.file_id
+                )
+                success = True
+            
+            if success:
+                sent_count += 1
+                logger.info(f"Message sent successfully to user {username} (TG ID: {telegram_id})")
+            else:
+                failed_count += 1
+                logger.warning(f"Unknown message type for user {username}")
+            
+            # Обновляем прогресс каждые 5 отправлений
+            if (sent_count + failed_count) % 5 == 0:
+                try:
+                    await progress_msg.edit_text(f"⏳ Обработано: {sent_count + failed_count}/{len(users)} пользователей\n✅ Отправлено: {sent_count}")
+                except:
+                    pass
+            
+            # Добавляем задержку между отправками
+            await asyncio.sleep(0.3)
+            
+        except Exception as e:
+            failed_count += 1
+            logger.error(f"Failed to send message to user {username if 'username' in locals() else 'unknown'}: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Удаляем сообщение о прогрессе
+    try:
+        await progress_msg.delete()
+    except:
+        pass
+    
+    # Подсчитываем количество авторизованных пользователей
+    authorized_users = sum(1 for user_data in users if len(user_data) > 2 and user_data[2] is not None and user_data[2] != message.from_user.id)
+    
+    result_message = (
+        f"📊 Рассылка завершена!\n\n"
+        f"👥 Всего пользователей: {len(users)}\n"
+        f"🔐 Авторизованных: {authorized_users}\n"
+        f"✅ Отправлено: {sent_count}\n"
+        f"❌ Не доставлено: {failed_count}"
+    )
+    
+    logger.info(f"Broadcast completed. Sent: {sent_count}, Failed: {failed_count}")
+    
     await send_success_message(message, result_message)
     await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
     await state.clear()
