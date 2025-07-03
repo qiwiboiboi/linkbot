@@ -14,6 +14,8 @@ class Database:
         self._create_tables()
         self._migrate_tables()  # Добавляем миграцию
     
+    # Добавить в database.py в метод _create_tables():
+
     def _create_tables(self):
         """Создание необходимых таблиц, если они не существуют"""
         self.cursor.execute('''
@@ -23,7 +25,7 @@ class Database:
             password TEXT NOT NULL,
             telegram_id INTEGER UNIQUE,
             link TEXT,
-            full_name TEXT  -- Добавляем поле для полного имени
+            full_name TEXT
         )
         ''')
         
@@ -34,7 +36,113 @@ class Database:
             channel_id TEXT NOT NULL
         )
         ''')
+        
+        # Новая таблица для кастомных кнопок
+        self.cursor.execute('''
+        CREATE TABLE IF NOT EXISTS custom_buttons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            is_active INTEGER DEFAULT 1,
+            sort_order INTEGER DEFAULT 0
+        )
+        ''')
+        
         self.connection.commit()
+
+    # Добавить методы для работы с кастомными кнопками в конец класса Database:
+
+    def add_custom_button(self, name, url):
+        """Добавление новой кастомной кнопки"""
+        try:
+            # Получаем максимальный порядок сортировки
+            self.cursor.execute("SELECT MAX(sort_order) FROM custom_buttons")
+            max_order = self.cursor.fetchone()[0] or 0
+            
+            self.cursor.execute(
+                "INSERT INTO custom_buttons (name, url, sort_order) VALUES (?, ?, ?)",
+                (name, url, max_order + 1)
+            )
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при добавлении кастомной кнопки: {e}")
+            return False
+
+    def get_custom_buttons(self, active_only=True):
+        """Получение списка кастомных кнопок"""
+        try:
+            if active_only:
+                self.cursor.execute(
+                    "SELECT id, name, url, is_active FROM custom_buttons WHERE is_active = 1 ORDER BY sort_order"
+                )
+            else:
+                self.cursor.execute(
+                    "SELECT id, name, url, is_active FROM custom_buttons ORDER BY sort_order"
+                )
+            return self.cursor.fetchall()
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при получении кастомных кнопок: {e}")
+            return []
+
+    def update_custom_button(self, button_id, name=None, url=None):
+        """Обновление кастомной кнопки"""
+        try:
+            if name is not None and url is not None:
+                self.cursor.execute(
+                    "UPDATE custom_buttons SET name = ?, url = ? WHERE id = ?",
+                    (name, url, button_id)
+                )
+            elif name is not None:
+                self.cursor.execute(
+                    "UPDATE custom_buttons SET name = ? WHERE id = ?",
+                    (name, button_id)
+                )
+            elif url is not None:
+                self.cursor.execute(
+                    "UPDATE custom_buttons SET url = ? WHERE id = ?",
+                    (url, button_id)
+                )
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при обновлении кастомной кнопки: {e}")
+            return False
+
+    def toggle_custom_button(self, button_id):
+        """Переключение активности кастомной кнопки"""
+        try:
+            self.cursor.execute(
+                "UPDATE custom_buttons SET is_active = 1 - is_active WHERE id = ?",
+                (button_id,)
+            )
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при переключении кастомной кнопки: {e}")
+            return False
+
+    def delete_custom_button(self, button_id):
+        """Удаление кастомной кнопки"""
+        try:
+            self.cursor.execute("DELETE FROM custom_buttons WHERE id = ?", (button_id,))
+            self.connection.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при удалении кастомной кнопки: {e}")
+            return False
+
+    def get_custom_button_by_id(self, button_id):
+        """Получение кастомной кнопки по ID"""
+        try:
+            self.cursor.execute(
+                "SELECT id, name, url, is_active FROM custom_buttons WHERE id = ?",
+                (button_id,)
+            )
+            return self.cursor.fetchone()
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при получении кастомной кнопки: {e}")
+            return None
     
     def _migrate_tables(self):
         """Миграция существующих таблиц"""
@@ -187,14 +295,44 @@ class Database:
             return result[:3]  # (username, telegram_id, link)
         return result  # (username, telegram_id, link, full_name) или None
         
+    # Заменить метод set_channel в database.py:
+
     def set_channel(self, channel_type, channel_id):
         """Установка или обновление канала определенного типа"""
         try:
+            # Сначала проверяем, есть ли уже запись с таким типом
             self.cursor.execute(
-                "INSERT OR REPLACE INTO channels (type, channel_id) VALUES (?, ?)",
-                (channel_type, channel_id)
+                "SELECT id FROM channels WHERE type = ?",
+                (channel_type,)
             )
+            existing = self.cursor.fetchone()
+            
+            if existing:
+                # Если запись существует, обновляем её
+                self.cursor.execute(
+                    "UPDATE channels SET channel_id = ? WHERE type = ?",
+                    (channel_id, channel_type)
+                )
+                logger.info(f"Updated channel {channel_type} to {channel_id}")
+            else:
+                # Если записи нет, создаём новую
+                self.cursor.execute(
+                    "INSERT INTO channels (type, channel_id) VALUES (?, ?)",
+                    (channel_type, channel_id)
+                )
+                logger.info(f"Inserted new channel {channel_type} with {channel_id}")
+            
             self.connection.commit()
+            
+            # Проверяем, что изменения применились
+            self.cursor.execute(
+                "SELECT channel_id FROM channels WHERE type = ?",
+                (channel_type,)
+            )
+            result = self.cursor.fetchone()
+            saved_id = result[0] if result else None
+            logger.info(f"Verification: channel {channel_type} now has ID {saved_id}")
+            
             return True
         except sqlite3.Error as e:
             logger.error(f"Ошибка при установке канала: {e}")

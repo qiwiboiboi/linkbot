@@ -3,16 +3,19 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardB
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from config import get_welcome_message, update_welcome_message
-from models import BroadcastByIdStates, ChannelStates
+from models import BroadcastByIdStates, ChannelStates, CustomButtonStates
 from database import db
 from models import AddUserStates, EditUserStates, DeleteUserStates, BroadcastStates, WelcomeMessageStates
+
 from utils.keyboards import (
     get_admin_keyboard, 
     get_user_action_keyboard, 
     get_cancel_keyboard,
     get_admin_inline_keyboard,
     get_main_keyboard,
-    get_start_keyboard
+    get_start_keyboard,
+    get_button_management_keyboard,
+    get_button_edit_keyboard
 )
 from utils.helpers import (
     check_admin,
@@ -28,20 +31,21 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = Router()
+# Заменить функцию get_channel_name и обработчики кнопок каналов в handlers/admin.py:
 
-async def get_channel_name(bot: Bot, channel_id: str) -> str:
-    """Получить имя канала по его ID"""
+async def get_channel_info(bot: Bot, channel_id: str) -> str:
+    """Получить информацию о канале по его ID"""
     try:
         chat = await bot.get_chat(channel_id)
         if chat.title:
-            return chat.title
+            return f"{chat.title}"
         elif chat.username:
             return f"@{chat.username}"
         else:
-            return channel_id
+            return f"ID: {channel_id}"
     except Exception as e:
-        logger.error(f"Failed to get channel name for {channel_id}: {e}")
-        return channel_id
+        logger.error(f"Failed to get channel info for {channel_id}: {e}")
+        return f"ID: {channel_id}"
 
 @router.message(F.text == "📋 Канал для ссылок")
 async def cmd_set_links_channel(message: Message, state: FSMContext, bot: Bot):
@@ -49,10 +53,10 @@ async def cmd_set_links_channel(message: Message, state: FSMContext, bot: Bot):
     if not await check_admin(message):
         return
 
-    # Показываем текущий канал
+    # Получаем свежий ID канала из базы данных
     current_channel_id = db.get_channel("links")
     if current_channel_id:
-        current_status = await get_channel_name(bot, current_channel_id)
+        current_status = await get_channel_info(bot, current_channel_id)
     else:
         current_status = "Отсутствует"
     
@@ -71,10 +75,10 @@ async def cmd_set_messages_channel(message: Message, state: FSMContext, bot: Bot
     if not await check_admin(message):
         return
 
-    # Показываем текущий канал
+    # Получаем свежий ID канала из базы данных
     current_channel_id = db.get_channel("messages")
     if current_channel_id:
-        current_status = await get_channel_name(bot, current_channel_id)
+        current_status = await get_channel_info(bot, current_channel_id)
     else:
         current_status = "Отсутствует"
     
@@ -86,6 +90,7 @@ async def cmd_set_messages_channel(message: Message, state: FSMContext, bot: Bot
     )
     await state.update_data(channel_type="messages")
     await state.set_state(ChannelStates.waiting_for_channel_id)
+# Добавить этот обработчик в handlers/admin.py после существующих обработчиков каналов:
 
 @router.message(ChannelStates.waiting_for_channel_id)
 async def process_channel_id(message: Message, state: FSMContext, bot: Bot):
@@ -97,6 +102,8 @@ async def process_channel_id(message: Message, state: FSMContext, bot: Bot):
     state_data = await state.get_data()
     channel_type = state_data.get('channel_type')
 
+    logger.info(f"Attempting to set channel {channel_type} to {channel_id}")
+
     try:
         # Пытаемся отправить тестовое сообщение в канал
         test_message = await bot.send_message(
@@ -107,11 +114,19 @@ async def process_channel_id(message: Message, state: FSMContext, bot: Bot):
         await test_message.delete()
 
         # Сохраняем ID канала в базе данных
-        if db.set_channel(channel_type, channel_id):
+        save_result = db.set_channel(channel_type, channel_id)
+        logger.info(f"Channel save result: {save_result}")
+        
+        if save_result:
+            # Проверяем, что канал действительно сохранился
+            saved_channel = db.get_channel(channel_type)
+            logger.info(f"Saved channel ID: {saved_channel}")
+            
             channel_type_text = "ссылок" if channel_type == "links" else "сообщений"
             await send_success_message(
                 message,
-                f"Канал для {channel_type_text} успешно установлен!"
+                f"Канал для {channel_type_text} успешно установлен!\n"
+                f"Новый ID: {channel_id}"
             )
         else:
             await send_error_message(
@@ -120,6 +135,7 @@ async def process_channel_id(message: Message, state: FSMContext, bot: Bot):
             )
 
     except Exception as e:
+        logger.error(f"Error setting channel: {e}")
         await send_error_message(
             message,
             "Не удалось установить канал. Убедитесь, что:\n"
@@ -131,7 +147,6 @@ async def process_channel_id(message: Message, state: FSMContext, bot: Bot):
 
     await message.answer("Выберите действие:", reply_markup=get_admin_keyboard())
     await state.clear()
-
 
 def get_display_name(user_data, username):
     """Безопасное получение отображаемого имени пользователя"""
@@ -1020,3 +1035,348 @@ async def process_welcome_message(message: Message, state: FSMContext):
 def setup(dp: Dispatcher):
     """Регистрация обработчиков администратора"""
     dp.include_router(router)
+
+
+
+@router.message(F.text == "🔘 Управление кнопками")
+async def cmd_manage_buttons(message: Message):
+    """Обработчик входа в управление кнопками"""
+    if not await check_admin(message):
+        return
+    
+    await message.answer(
+        "🔘 Управление кастомными кнопками пользователей:",
+        reply_markup=get_button_management_keyboard()
+    )
+
+@router.message(F.text == "↩️ Назад к админке")
+async def cmd_back_to_admin(message: Message):
+    """Возврат к админ панели"""
+    if not await check_admin(message):
+        return
+    
+    await message.answer("Функции администрирования:", reply_markup=get_admin_keyboard())
+
+@router.message(F.text == "➕ Добавить кнопку")
+async def cmd_add_button(message: Message, state: FSMContext):
+    """Добавление новой кастомной кнопки"""
+    if not await check_admin(message):
+        return
+    
+    await message.answer(
+        "Введите название для новой кнопки:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(CustomButtonStates.waiting_for_button_name)
+
+@router.message(CustomButtonStates.waiting_for_button_name)
+async def process_button_name(message: Message, state: FSMContext):
+    """Обработка названия кнопки"""
+    if await cancel_state(message, state):
+        return
+    
+    button_name = message.text.strip()
+    if not button_name:
+        await send_error_message(message, "Название кнопки не может быть пустым.")
+        return
+    
+    await state.update_data(button_name=button_name)
+    await message.answer(
+        f"Название кнопки: {button_name}\n\n"
+        f"Теперь введите ссылку для этой кнопки:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(CustomButtonStates.waiting_for_button_url)
+
+@router.message(CustomButtonStates.waiting_for_button_url)
+async def process_button_url(message: Message, state: FSMContext):
+    """Обработка ссылки кнопки"""
+    if await cancel_state(message, state):
+        return
+    
+    button_url = message.text.strip()
+    if not button_url:
+        await send_error_message(message, "Ссылка не может быть пустой.")
+        return
+    
+    # Проверяем, что ссылка начинается с http:// или https://
+    if not (button_url.startswith('http://') or button_url.startswith('https://')):
+        button_url = 'https://' + button_url
+    
+    user_data = await state.get_data()
+    button_name = user_data.get('button_name')
+    
+    # Сохраняем кнопку в базу данных
+    if db.add_custom_button(button_name, button_url):
+        await send_success_message(
+            message,
+            f"✅ Кнопка успешно создана!\n\n"
+            f"📝 Название: {button_name}\n"
+            f"🔗 Ссылка: {button_url}"
+        )
+    else:
+        await send_error_message(message, "Не удалось создать кнопку.")
+    
+    await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+    await state.clear()
+
+@router.message(F.text == "📋 Список кнопок")
+async def cmd_list_buttons(message: Message):
+    """Показать список всех кнопок"""
+    if not await check_admin(message):
+        return
+    
+    buttons = db.get_custom_buttons(active_only=False)
+    
+    if not buttons:
+        await message.answer("📋 Кастомных кнопок пока нет.")
+        return
+    
+    buttons_text = "📋 Список всех кастомных кнопок:\n\n"
+    for button_data in buttons:
+        button_id, name, url, is_active = button_data
+        status = "✅ Активна" if is_active else "❌ Отключена"
+        buttons_text += f"🆔 ID: {button_id}\n"
+        buttons_text += f"📝 Название: {name}\n"
+        buttons_text += f"🔗 Ссылка: {url}\n"
+        buttons_text += f"🔄 Статус: {status}\n\n"
+    
+    await message.answer(buttons_text)
+    await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+
+@router.message(F.text == "✏️ Изменить кнопку")
+async def cmd_edit_button(message: Message, state: FSMContext):
+    """Изменение кастомной кнопки"""
+    if not await check_admin(message):
+        return
+    
+    buttons = db.get_custom_buttons(active_only=False)
+    
+    if not buttons:
+        await send_error_message(message, "Нет кнопок для изменения.")
+        await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+        return
+    
+    buttons_text = "📋 Выберите кнопку для изменения (введите ID):\n\n"
+    for button_data in buttons:
+        button_id, name, url, is_active = button_data
+        status = "✅" if is_active else "❌"
+        buttons_text += f"🆔 {button_id}: {status} {name}\n"
+    
+    await message.answer(buttons_text, reply_markup=get_cancel_keyboard())
+    await state.set_state(CustomButtonStates.waiting_for_button_id)
+    await state.update_data(action="edit")  # Добавить эту строку!
+
+@router.message(CustomButtonStates.waiting_for_button_id)
+async def process_edit_button_id(message: Message, state: FSMContext):
+    """Обработка ID кнопки для изменения"""
+    if await cancel_state(message, state):
+        return
+    
+    try:
+        button_id = int(message.text.strip())
+    except ValueError:
+        await send_error_message(message, "Введите корректный числовой ID кнопки.")
+        return
+    
+    button = db.get_custom_button_by_id(button_id)
+    if not button:
+        await send_error_message(message, f"Кнопка с ID {button_id} не найдена.")
+        await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+        await state.clear()
+        return
+    
+    button_id, name, url, is_active = button
+    await state.update_data(button_id=button_id, current_name=name, current_url=url)
+    
+    await message.answer(
+        f"📝 Изменение кнопки:\n\n"
+        f"🆔 ID: {button_id}\n"
+        f"📝 Текущее название: {name}\n"
+        f"🔗 Текущая ссылка: {url}\n\n"
+        f"Что хотите изменить?",
+        reply_markup=get_button_edit_keyboard()
+    )
+    await state.set_state(CustomButtonStates.waiting_for_edit_choice)
+
+@router.message(CustomButtonStates.waiting_for_edit_choice)
+async def process_edit_choice(message: Message, state: FSMContext):
+    """Обработка выбора что изменить"""
+    if await cancel_state(message, state):
+        return
+    
+    choice = message.text.strip()
+    
+    if choice == "📝 Изменить название":
+        await message.answer("Введите новое название кнопки:", reply_markup=get_cancel_keyboard())
+        await state.set_state(CustomButtonStates.waiting_for_new_name)
+    elif choice == "🔗 Изменить ссылку":
+        await message.answer("Введите новую ссылку:", reply_markup=get_cancel_keyboard())
+        await state.set_state(CustomButtonStates.waiting_for_new_url)
+    else:
+        await send_error_message(message, "Выберите действие из предложенных кнопок.")
+
+@router.message(CustomButtonStates.waiting_for_new_name)
+async def process_new_button_name(message: Message, state: FSMContext):
+    """Обработка нового названия кнопки"""
+    if await cancel_state(message, state):
+        return
+    
+    new_name = message.text.strip()
+    if not new_name:
+        await send_error_message(message, "Название не может быть пустым.")
+        return
+    
+    user_data = await state.get_data()
+    button_id = user_data.get('button_id')
+    
+    if db.update_custom_button(button_id, name=new_name):
+        await send_success_message(message, f"Название кнопки успешно изменено на '{new_name}'")
+    else:
+        await send_error_message(message, "Не удалось изменить название кнопки.")
+    
+    await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+    await state.clear()
+
+@router.message(CustomButtonStates.waiting_for_new_url)
+async def process_new_button_url(message: Message, state: FSMContext):
+    """Обработка новой ссылки кнопки"""
+    if await cancel_state(message, state):
+        return
+    
+    new_url = message.text.strip()
+    if not new_url:
+        await send_error_message(message, "Ссылка не может быть пустой.")
+        return
+    
+    # Проверяем, что ссылка начинается с http:// или https://
+    if not (new_url.startswith('http://') or new_url.startswith('https://')):
+        new_url = 'https://' + new_url
+    
+    user_data = await state.get_data()
+    button_id = user_data.get('button_id')
+    
+    if db.update_custom_button(button_id, url=new_url):
+        await send_success_message(message, f"Ссылка кнопки успешно изменена на '{new_url}'")
+    else:
+        await send_error_message(message, "Не удалось изменить ссылку кнопки.")
+    
+    await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+    await state.clear()
+
+@router.message(F.text == "🔄 Вкл/Выкл кнопку")
+async def cmd_toggle_button(message: Message, state: FSMContext):
+    """Включение/выключение кнопки"""
+    if not await check_admin(message):
+        return
+    
+    buttons = db.get_custom_buttons(active_only=False)
+    
+    if not buttons:
+        await send_error_message(message, "Нет кнопок для переключения.")
+        await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+        return
+    
+    buttons_text = "🔄 Выберите кнопку для переключения (введите ID):\n\n"
+    for button_data in buttons:
+        button_id, name, url, is_active = button_data
+        status = "✅ Активна" if is_active else "❌ Отключена"
+        buttons_text += f"🆔 {button_id}: {name} - {status}\n"
+    
+    await message.answer(buttons_text, reply_markup=get_cancel_keyboard())
+    await state.set_state(CustomButtonStates.waiting_for_button_id)
+    await state.update_data(action="toggle")
+
+@router.message(F.text == "🗑 Удалить кнопку")
+async def cmd_delete_button(message: Message, state: FSMContext):
+    """Удаление кнопки"""
+    if not await check_admin(message):
+        return
+    
+    buttons = db.get_custom_buttons(active_only=False)
+    
+    if not buttons:
+        await send_error_message(message, "Нет кнопок для удаления.")
+        await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+        return
+    
+    buttons_text = "🗑 Выберите кнопку для удаления (введите ID):\n\n"
+    for button_data in buttons:
+        button_id, name, url, is_active = button_data
+        buttons_text += f"🆔 {button_id}: {name}\n"
+    
+    await message.answer(buttons_text, reply_markup=get_cancel_keyboard())
+    await state.set_state(CustomButtonStates.waiting_for_button_id)
+    await state.update_data(action="delete")
+
+# Дополнительная обработка для переключения и удаления
+@router.message(CustomButtonStates.waiting_for_button_id)
+async def process_button_action(message: Message, state: FSMContext):
+    """Обработка действий с кнопкой по ID"""
+    if await cancel_state(message, state):
+        return
+    
+    try:
+        button_id = int(message.text.strip())
+    except ValueError:
+        await send_error_message(message, "Введите корректный числовой ID кнопки.")
+        return
+    
+    user_data = await state.get_data()
+    action = user_data.get('action')
+    
+    button = db.get_custom_button_by_id(button_id)
+    if not button:
+        await send_error_message(message, f"Кнопка с ID {button_id} не найдена.")
+        await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+        await state.clear()
+        return
+    
+    button_id, name, url, is_active = button
+    
+    if action == "toggle":
+        if db.toggle_custom_button(button_id):
+            new_status = "отключена" if is_active else "активирована"
+            await send_success_message(message, f"Кнопка '{name}' успешно {new_status}!")
+        else:
+            await send_error_message(message, "Не удалось переключить кнопку.")
+        
+        await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+        await state.clear()
+    
+    elif action == "delete":
+        if db.delete_custom_button(button_id):
+            await send_success_message(message, f"Кнопка '{name}' успешно удалена!")
+        else:
+            await send_error_message(message, "Не удалось удалить кнопку.")
+        
+        await message.answer("Управление кнопками:", reply_markup=get_button_management_keyboard())
+        await state.clear()
+    
+    elif action == "edit":
+        # Это обработка для редактирования - переходим к выбору что изменить
+        await state.update_data(button_id=button_id, current_name=name, current_url=url)
+        
+        await message.answer(
+            f"📝 Изменение кнопки:\n\n"
+            f"🆔 ID: {button_id}\n"
+            f"📝 Текущее название: {name}\n"
+            f"🔗 Текущая ссылка: {url}\n\n"
+            f"Что хотите изменить?",
+            reply_markup=get_button_edit_keyboard()
+        )
+        await state.set_state(CustomButtonStates.waiting_for_edit_choice)
+    
+    else:
+        # Если действие не определено - по умолчанию считаем редактированием
+        await state.update_data(button_id=button_id, current_name=name, current_url=url)
+        
+        await message.answer(
+            f"📝 Изменение кнопки:\n\n"
+            f"🆔 ID: {button_id}\n"
+            f"📝 Текущее название: {name}\n"
+            f"🔗 Текущая ссылка: {url}\n\n"
+            f"Что хотите изменить?",
+            reply_markup=get_button_edit_keyboard()
+        )
+        await state.set_state(CustomButtonStates.waiting_for_edit_choice)

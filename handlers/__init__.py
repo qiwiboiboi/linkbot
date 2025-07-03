@@ -3,6 +3,6 @@ from . import auth, user, admin
 
 def register_all_handlers(dp):
     """Регистрация всех обработчиков"""
-    auth.setup(dp)
-    user.setup(dp)
-    admin.setup(dp)
+    auth.setup(dp)      # Сначала авторизация
+    admin.setup(dp)     # Потом админ
+    user.setup(dp)      # В конце пользователь

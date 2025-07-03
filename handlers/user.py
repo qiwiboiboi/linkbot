@@ -1,4 +1,4 @@
-from asyncio.log import logger
+import logging
 from aiogram import Router, F, Bot, Dispatcher
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
@@ -12,6 +12,9 @@ from utils.helpers import send_error_message, send_success_message, cancel_state
 
 # Создаем роутер для пользовательских команд
 router = Router()
+
+# Исправленный импорт logger
+logger = logging.getLogger(__name__)
 
 async def check_auth(message: Message) -> bool:
     """Проверка авторизации пользователя по сообщению"""
@@ -230,11 +233,25 @@ async def process_user_message(message: Message, state: FSMContext, bot: Bot):
             await state.clear()
             return
         
+        # Получаем имя пользователя для отображения
+        username = user[1]
+        full_name = None
+        
+        # Проверяем, есть ли поле full_name
+        if len(user) > 3:
+            full_name = user[3]
+        
+        # Формируем отображаемое имя
+        if full_name and full_name.strip():
+            display_name = f"{full_name} (@{username})"
+        else:
+            display_name = username
+        
         # Отправляем сообщение в канал
         await bot.send_message(
             chat_id=messages_channel,
             text=f"📨 Новое сообщение от пользователя\n\n"
-                 f"👤 Пользователь: {user[1]}\n"
+                 f"👤 Пользователь: {display_name}\n"
                  f"💬 Сообщение:\n{user_text}",
             parse_mode="HTML"
         )
@@ -335,3 +352,32 @@ async def callback_logout(callback: CallbackQuery):
 def setup(dp: Dispatcher):
     """Регистрация обработчиков пользователя"""
     dp.include_router(router)
+
+# Добавить в конец handlers/user.py обработчик кастомных кнопок:
+
+@router.message()
+async def handle_custom_buttons(message: Message):
+    """Обработчик кастомных кнопок - должен быть последним в цепочке обработчиков"""
+    if not await check_auth(message):
+        return
+    
+    # Получаем все активные кастомные кнопки
+    custom_buttons = db.get_custom_buttons(active_only=True)
+    
+    # Ищем кнопку с таким названием
+    for button_data in custom_buttons:
+        button_id, name, url, is_active = button_data
+        if message.text.strip() == name:
+            # Отправляем ссылку
+            await message.answer(
+                f"🔗 {name}:\n{url}",
+                disable_web_page_preview=False
+            )
+            
+            # Показываем клавиатуру обратно
+            is_admin = message.from_user.id in ADMIN_IDS
+            keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
+            await message.answer("Выберите действие:", reply_markup=keyboard)
+            return
+    
+    # Если кнопка не найдена, не отвечаем (позволяем другим обработчикам сработать)

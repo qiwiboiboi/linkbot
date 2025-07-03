@@ -45,7 +45,17 @@ class BroadcastByIdStates(StatesGroup):
 class WelcomeMessageStates(StatesGroup):
     """Состояния для редактирования приветственного сообщения"""
     waiting_for_message = State()
+# Добавить в models.py новые состояния:
 
+class CustomButtonStates(StatesGroup):
+    """Состояния для управления кастомными кнопками"""
+    waiting_for_button_name = State()
+    waiting_for_button_url = State()
+    waiting_for_button_id = State()
+    waiting_for_edit_choice = State()
+    waiting_for_new_name = State()
+    waiting_for_new_url = State()
+    
 class ChannelStates(StatesGroup):
     """Состояния для управления каналами"""
     waiting_for_channel_type = State()
