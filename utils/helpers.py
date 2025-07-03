@@ -46,44 +46,40 @@ async def cancel_state(message: types.Message, state: FSMContext) -> bool:
         
         return True
     return False
-
 def format_user_list(users: list) -> str:
-    """Форматирование списка пользователей с выводом паролей и полных имен"""
+    """Форматирование списка пользователей - используется только для коротких списков"""
     if not users:
         return "Список пользователей пуст."
     
-    # Для отображения списка пользователей нужно получить пароли
-    from database import db
+    # Для отображения более 5 пользователей используем send_user_list_in_parts
+    if len(users) > 5:
+        return f"📊 Найдено пользователей: {len(users)}\n\n⚠️ Используется разбивка на части."
     
-    report = "📊 Список всех пользователей:\n\n"
+    # Для короткого списка возвращаем базовую информацию
+    report = f"📊 Пользователи ({len(users)}):\n\n"
     for user_data in users:
-        # Безопасная распаковка данных с учетом возможного отсутствия поля full_name
-        user_id = user_data[0]
-        username = user_data[1]
-        telegram_id = user_data[2] if len(user_data) > 2 else None
-        link = user_data[3] if len(user_data) > 3 else None
-        full_name = user_data[4] if len(user_data) > 4 else None
-        
-        # Получаем данные пользователя включая пароль
-        user_db_data = db.get_user_by_username(username)
-        password = user_db_data[1] if user_db_data else "Не найден"
-        
-        # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
-        if full_name and full_name.strip():
-            display_name = f"{full_name} (@{username})"
-        else:
-            display_name = username
-        
-        report += f"ID: {user_id} | {display_name}\n"
-        report += f"   Логин: {username}\n"
-        report += f"   Пароль: {password}\n"
-        
-        if telegram_id:
-            report += f"   Статус: ✅ Авторизован (TG ID: {telegram_id})\n"
-        else:
-            report += f"   Статус: ❌ Не авторизован\n"
+        try:
+            user_id = user_data[0]
+            username = user_data[1]
+            telegram_id = user_data[2] if len(user_data) > 2 else None
+            full_name = user_data[4] if len(user_data) > 4 else None
             
-        report += f"   Информация: {link or '—'}\n\n"
+            if full_name and full_name.strip():
+                display_name = f"{full_name} (@{username})"
+            else:
+                display_name = username
+            
+            report += f"🆔 {user_id}: {display_name}"
+            if telegram_id:
+                report += " ✅"
+            else:
+                report += " ❌"
+            report += "\n"
+            
+        except Exception as e:
+            logger.error(f"Error formatting user in short list: {e}")
+            report += f"❌ Ошибка пользователя\n"
+    
     return report
 
 async def send_error_message(message: types.Message, error_text: str, reply_markup=None):

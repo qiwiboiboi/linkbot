@@ -1,4 +1,8 @@
+# utils/keyboards.py с отладкой
+import logging
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+
+logger = logging.getLogger(__name__)
 
 def get_start_keyboard():
     """Клавиатура для неавторизованных пользователей"""
@@ -23,33 +27,58 @@ def get_auth_keyboard():
 
 def get_main_keyboard():
     """Обычная клавиатура для авторизованных пользователей с кастомными кнопками"""
-    from database import db  # Импортируем здесь, чтобы избежать циклического импорта
-    
-    # Базовые кнопки
-    kb = [
-        [KeyboardButton(text='🔗 Моё актуальное'), KeyboardButton(text='🔄 Изменить')],
-        [KeyboardButton(text='✉️ Написать сообщение')]
-    ]
-    
-    # Добавляем кастомные кнопки
     try:
-        custom_buttons = db.get_custom_buttons(active_only=True)
-        for button_data in custom_buttons:
-            button_name = button_data[1]  # name
-            kb.append([KeyboardButton(text=button_name)])
+        # Импортируем здесь, чтобы избежать циклического импорта
+        from database import db
+        
+        # Базовые кнопки
+        kb = [
+            [KeyboardButton(text='🔗 Моё актуальное'), KeyboardButton(text='🔄 Изменить')],
+            [KeyboardButton(text='✉️ Написать сообщение')]
+        ]
+        
+        # Добавляем кастомные кнопки
+        try:
+            custom_buttons = db.get_custom_buttons(active_only=True)
+            logger.info(f"Found {len(custom_buttons)} custom buttons")
+            
+            for button_data in custom_buttons:
+                button_name = button_data[1]  # name
+                kb.append([KeyboardButton(text=button_name)])
+                logger.info(f"Added custom button: {button_name}")
+                
+        except Exception as e:
+            logger.error(f"Error getting custom buttons: {e}")
+            # Если возникла ошибка с базой данных, просто пропускаем кастомные кнопки
+            pass
+        
+        # Кнопка выхода в конце
+        kb.append([KeyboardButton(text='🚪 Выйти')])
+        
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=kb, 
+            resize_keyboard=True, 
+            one_time_keyboard=False,
+            is_persistent=True
+        )
+        
+        logger.info(f"Created main keyboard with {len(kb)} rows")
+        return keyboard
+        
     except Exception as e:
-        # Если возникла ошибка с базой данных, просто пропускаем кастомные кнопки
-        pass
-    
-    # Кнопка выхода в конце
-    kb.append([KeyboardButton(text='🚪 Выйти')])
-    
-    return ReplyKeyboardMarkup(
-        keyboard=kb, 
-        resize_keyboard=True, 
-        one_time_keyboard=False,
-        is_persistent=True
-    )
+        logger.error(f"Error creating main keyboard: {e}")
+        # Fallback клавиатура без кастомных кнопок
+        kb = [
+            [KeyboardButton(text='🔗 Моё актуальное'), KeyboardButton(text='🔄 Изменить')],
+            [KeyboardButton(text='✉️ Написать сообщение')],
+            [KeyboardButton(text='🚪 Выйти')]
+        ]
+        return ReplyKeyboardMarkup(
+            keyboard=kb, 
+            resize_keyboard=True, 
+            one_time_keyboard=False,
+            is_persistent=True
+        )
 
 def get_admin_inline_keyboard():
     """Инлайн-клавиатура для базовых действий администраторов"""

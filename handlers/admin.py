@@ -811,8 +811,13 @@ async def check_admin_and_get_users(message: Message) -> list:
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
     """Обработчик команды /admin с разбивкой на части"""
-    users = await check_admin_and_get_users(message)
+    if not await check_admin(message):
+        return
+    
+    users = db.get_all_users()
     if not users:
+        await send_error_message(message, "Список пользователей пуст.")
+        await message.answer("Функции администрирования:", reply_markup=get_admin_keyboard())
         return
     
     # Разбиваем список пользователей на части
@@ -824,76 +829,90 @@ async def cmd_admin(message: Message):
     )
 
 async def send_user_list_in_parts(message: Message, users: list):
-    """Отправка списка пользователей частями"""
+    """Отправка списка пользователей частями с улучшенной обработкой"""
     if not users:
         await message.answer("Список пользователей пуст.")
         return
     
-    # Константы для разбивки
-    MAX_MESSAGE_LENGTH = 4000  # Оставляем запас от лимита в 4096 символов
+    # Константы для разбивки (оставляем больше запаса)
+    MAX_MESSAGE_LENGTH = 3800  # Запас от лимита в 4096 символов
+    
+    # Заголовок
+    header = f"📊 Список всех пользователей (всего: {len(users)}):\n\n"
     
     # Формируем данные для каждого пользователя
     user_entries = []
     for user_data in users:
-        # Безопасная распаковка данных с учетом возможного отсутствия поля full_name
-        user_id = user_data[0]
-        username = user_data[1]
-        telegram_id = user_data[2] if len(user_data) > 2 else None
-        link = user_data[3] if len(user_data) > 3 else None
-        full_name = user_data[4] if len(user_data) > 4 else None
-        
-        # Получаем данные пользователя включая пароль
-        from database import db
-        user_db_data = db.get_user_by_username(username)
-        password = user_db_data[1] if user_db_data else "Не найден"
-        
-        # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
-        if full_name and full_name.strip():
-            display_name = f"{full_name} (@{username})"
-        else:
-            display_name = username
-        
-        # Формируем текст для одного пользователя
-        user_text = f"ID: {user_id} | {display_name}\n"
-        user_text += f"   Логин: {username}\n"
-        user_text += f"   Пароль: {password}\n"
-        
-        if telegram_id:
-            user_text += f"   Статус: ✅ Авторизован (TG ID: {telegram_id})\n"
-        else:
-            user_text += f"   Статус: ❌ Не авторизован\n"
+        try:
+            # Безопасная распаковка данных
+            user_id = user_data[0]
+            username = user_data[1]
+            telegram_id = user_data[2] if len(user_data) > 2 else None
+            link = user_data[3] if len(user_data) > 3 else None
+            full_name = user_data[4] if len(user_data) > 4 else None
             
-        user_text += f"   Информация: {link or '—'}\n\n"
-        
-        user_entries.append(user_text)
+            # Получаем пароль из базы данных
+            try:
+                user_db_data = db.get_user_by_username(username)
+                password = user_db_data[1] if user_db_data else "❌ Ошибка"
+            except Exception as e:
+                logger.error(f"Error getting user password for {username}: {e}")
+                password = "❌ Ошибка"
+            
+            # Формируем отображение имени
+            if full_name and full_name.strip():
+                display_name = f"{full_name} (@{username})"
+            else:
+                display_name = username
+            
+            # Формируем текст для одного пользователя
+            user_text = f"🆔 ID: {user_id}\n"
+            user_text += f"👤 Имя: {display_name}\n"
+            user_text += f"📝 Логин: {username}\n"
+            user_text += f"🔐 Пароль: {password}\n"
+            
+            if telegram_id:
+                user_text += f"✅ Авторизован (TG: {telegram_id})\n"
+            else:
+                user_text += f"❌ Не авторизован\n"
+            
+            # Обрезаем слишком длинные ссылки
+            if link:
+                if len(link) > 100:
+                    display_link = link[:97] + "..."
+                else:
+                    display_link = link
+                user_text += f"🔗 Информация: {display_link}\n"
+            else:
+                user_text += f"🔗 Информация: —\n"
+            
+            user_text += "─" * 30 + "\n\n"
+            
+            user_entries.append(user_text)
+            
+        except Exception as e:
+            logger.error(f"Error processing user data: {e}")
+            # Добавляем базовую информацию даже при ошибке
+            user_entries.append(f"❌ Ошибка обработки пользователя ID: {user_data[0] if user_data else 'Unknown'}\n\n")
     
     # Разбиваем на части
     parts = []
     current_part = ""
-    current_length = 0
-    
-    # Заголовок для первой части
-    header = f"📊 Список всех пользователей (всего: {len(users)}):\n\n"
     
     for i, user_entry in enumerate(user_entries):
-        # Проверяем, поместится ли текущая запись в текущую часть
-        entry_length = len(user_entry)
-        
         # Для первой части учитываем длину заголовка
         if not current_part:
-            test_length = len(header) + current_length + entry_length
+            test_length = len(header) + len(current_part) + len(user_entry)
         else:
-            test_length = current_length + entry_length
+            test_length = len(current_part) + len(user_entry)
         
         if test_length > MAX_MESSAGE_LENGTH and current_part:
             # Если не помещается и есть текущая часть, сохраняем её
             parts.append(current_part.rstrip())
             current_part = user_entry
-            current_length = entry_length
         else:
             # Если помещается, добавляем к текущей части
             current_part += user_entry
-            current_length += entry_length
     
     # Добавляем последнюю часть
     if current_part:
@@ -901,25 +920,41 @@ async def send_user_list_in_parts(message: Message, users: list):
     
     # Отправляем части
     for i, part in enumerate(parts):
-        if i == 0:
-            # Первая часть с заголовком
-            full_message = header + part
-        else:
-            # Остальные части с номером
-            full_message = f"📊 Список пользователей (продолжение {i + 1}):\n\n{part}"
-        
-        await message.answer(full_message)
-        
-        # Небольшая задержка между сообщениями
-        import asyncio
-        await asyncio.sleep(0.1)
+        try:
+            if i == 0:
+                # Первая часть с заголовком
+                full_message = header + part
+            else:
+                # Остальные части с номером
+                full_message = f"📊 Список пользователей (часть {i + 1}):\n\n{part}"
+            
+            await message.answer(full_message)
+            
+            # Небольшая задержка между сообщениями
+            await asyncio.sleep(0.2)
+            
+        except Exception as e:
+            logger.error(f"Error sending user list part {i + 1}: {e}")
+            await message.answer(f"❌ Ошибка при отправке части {i + 1} списка пользователей")
     
     # Добавляем итоговую информацию
-    if len(parts) > 1:
-        await message.answer(f"📝 Итого пользователей: {len(users)}")
-    
-    # Добавляем инструкцию только в конце
-    await message.answer("Для добавления нового пользователя используйте команду /adduser")
+    try:
+        summary = f"📈 Статистика:\n"
+        summary += f"👥 Всего пользователей: {len(users)}\n"
+        
+        # Подсчитываем авторизованных пользователей
+        authorized_count = sum(1 for user_data in users if len(user_data) > 2 and user_data[2] is not None)
+        summary += f"✅ Авторизованных: {authorized_count}\n"
+        summary += f"❌ Не авторизованных: {len(users) - authorized_count}\n"
+        
+        if len(parts) > 1:
+            summary += f"📄 Частей сообщений: {len(parts)}"
+        
+        await message.answer(summary)
+        
+    except Exception as e:
+        logger.error(f"Error sending user list summary: {e}")
+        await message.answer(f"📊 Всего пользователей: {len(users)}")
 
 @router.message(F.text == "🏪 Добавить")
 @router.message(Command("adduser"))
