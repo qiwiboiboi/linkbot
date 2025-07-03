@@ -54,7 +54,7 @@ async def cmd_start(event: Message | types.CallbackQuery, state: FSMContext):
         
         # Отображаем нужные клавиатуры
         if is_admin:
-            # Для админа - обе клавиатуры
+            # Для админа - инлайн клавиатура для ссылок и обычная для администрирования
             await message.answer(
                 "Управление ссылками:", 
                 reply_markup=get_admin_inline_keyboard()
@@ -64,7 +64,7 @@ async def cmd_start(event: Message | types.CallbackQuery, state: FSMContext):
                 reply_markup=get_admin_keyboard()
             )
         else:
-            # Для обычного пользователя - только инлайн клавиатура
+            # Для обычного пользователя - обычная клавиатура
             await message.answer(
                 "Выберите действие:", 
                 reply_markup=get_main_keyboard()
@@ -411,7 +411,7 @@ async def process_password(message: Message, state: FSMContext, bot: Bot):
             reply_markup=get_admin_keyboard()
         )
     else:
-        # Для обычного пользователя - просто инлайн-кнопки
+        # Для обычного пользователя - обычная клавиатура
         await message.answer(
             "Выберите действие:",
             reply_markup=get_main_keyboard()

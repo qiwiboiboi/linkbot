@@ -28,10 +28,86 @@ async def check_auth_callback(callback: CallbackQuery) -> bool:
         await callback.message.answer("❌ Вы не авторизованы. Используйте /login", reply_markup=get_start_keyboard())
         return False
     return True
-# Фрагмент из user.py с исправленными обработчиками для установки ссылки
 
+# Обработчики для обычных кнопок
+@router.message(F.text == "🔄 Изменить")
+async def cmd_set_link_button(message: Message, state: FSMContext):
+    """Обработчик кнопки 'Изменить' для обычных пользователей"""
+    if not await check_auth(message):
+        return
+    
+    await message.answer(
+        """Введите информацию в формате:
+
+http://ссылка|Название
+
+Также можете дополнительно указать любую информацию, которую посчитаете нужной, либо написать в ЛС через меню бота.""",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(LinkStates.waiting_for_link)
+
+@router.message(F.text == "🔗 Моё актуальное")
+async def cmd_my_link_button(message: Message):
+    """Обработчик кнопки 'Моё актуальное' для обычных пользователей"""
+    if not await check_auth(message):
+        return
+    
+    user = db.get_user_by_telegram_id(message.from_user.id)
+    link = user[2]
+    
+    if link:
+        await message.answer(f"🔗 Ваша текущая информация:\n{link}")
+    else:
+        await message.answer("У вас еще нет сохраненной ссылки.\nИспользуйте кнопку 'Изменить' чтобы добавить ссылку.")
+    
+    # Показываем клавиатуру для обычного пользователя
+    await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
+
+@router.message(F.text == "✉️ Написать сообщение")
+async def cmd_send_message_button(message: Message, state: FSMContext):
+    """Обработчик кнопки 'Написать сообщение' для обычных пользователей"""
+    if not await check_auth(message):
+        return
+    
+    # Проверяем, настроен ли канал для сообщений
+    messages_channel = db.get_channel("messages")
+    if not messages_channel:
+        await send_error_message(
+            message,
+            "Канал для сообщений не настроен. Обратитесь к администратору."
+        )
+        await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
+        return
+    
+    await message.answer(
+        "Введите ваше сообщение:",
+        reply_markup=get_cancel_keyboard()
+    )
+    await state.set_state(MessageStates.waiting_for_message)
+
+@router.message(F.text == "🚪 Выйти")
+async def cmd_logout_button(message: Message):
+    """Обработчик кнопки 'Выйти' для обычных пользователей"""
+    user = db.get_user_by_telegram_id(message.from_user.id)
+    
+    if not user:
+        await send_error_message(message, "Вы не авторизованы.")
+        from utils.keyboards import get_start_button
+        await message.answer("Нажмите Старт для начала работы:", reply_markup=get_start_button())
+        return
+    
+    # Удаление привязки Telegram ID к аккаунту
+    db.update_telegram_id(user[0], None)
+    
+    # Отправляем сообщение о выходе и кнопку для перезапуска
+    from utils.keyboards import get_start_button
+    await message.answer(
+        "Вы успешно вышли из аккаунта.",
+        reply_markup=get_start_button()
+    )
+
+# Старые обработчики команд и callback'ов остаются для совместимости
 @router.message(Command("setlink"))
-
 async def cmd_set_link(message: Message, state: FSMContext):
     """Обработчик команды /setlink"""
     if not await check_auth(message):
@@ -46,7 +122,7 @@ async def cmd_set_link(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "set_link")
 async def callback_set_link(callback: CallbackQuery, state: FSMContext):
-    """Обработчик инлайн-кнопки изменения ссылки"""
+    """Обработчик инлайн-кнопки изменения ссылки (для админов)"""
     await callback.answer()
     
     if not await check_auth_callback(callback):
@@ -81,16 +157,14 @@ async def process_link(message: Message, state: FSMContext):
     
     from aiogram.types import ReplyKeyboardRemove
     
-    # После обновления ссылки показываем сообщение об успехе и убираем кнопку отмены
+    # После обновления ссылки показываем сообщение об успехе
     is_admin = message.from_user.id in ADMIN_IDS
     if is_admin:
         # Для админа показываем сообщение и административную клавиатуру
         await send_success_message(message, f"Актуальное:\n{link}", reply_markup=get_admin_keyboard())
     else:
-        # Для обычного пользователя сначала убираем клавиатуру отмены
-        await send_success_message(message, f"Актуальное:\n{link}", reply_markup=ReplyKeyboardRemove())
-        # Затем показываем инлайн клавиатуру
-        await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
+        # Для обычного пользователя показываем обычную клавиатуру
+        await send_success_message(message, f"Актуальное:\n{link}", reply_markup=get_main_keyboard())
     
     await state.clear()
     
@@ -102,7 +176,7 @@ async def process_link(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "send_message")
 async def callback_send_message(callback: CallbackQuery, state: FSMContext):
-    """Обработчик инлайн-кнопки отправки сообщения"""
+    """Обработчик инлайн-кнопки отправки сообщения (для админов)"""
     await callback.answer()
     
     if not await check_auth_callback(callback):
@@ -149,7 +223,10 @@ async def process_user_message(message: Message, state: FSMContext, bot: Bot):
                 "Канал для сообщений не настроен. Обратитесь к администратору.",
                 reply_markup=ReplyKeyboardRemove()
             )
-            await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
+            # Показываем соответствующую клавиатуру
+            is_admin = message.from_user.id in ADMIN_IDS
+            keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
+            await message.answer("Выберите действие:", reply_markup=keyboard)
             await state.clear()
             return
         
@@ -162,33 +239,34 @@ async def process_user_message(message: Message, state: FSMContext, bot: Bot):
             parse_mode="HTML"
         )
         
-        from aiogram.types import ReplyKeyboardRemove
+        # Отправляем сообщение об успехе
+        is_admin = message.from_user.id in ADMIN_IDS
+        keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
         
-        # Отправляем сообщение об успехе и убираем клавиатуру отмены
         await send_success_message(
             message, 
             "Ваше сообщение успешно отправлено!",
-            reply_markup=ReplyKeyboardRemove()
+            reply_markup=keyboard
         )
-        # Затем показываем основное меню
-        await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
         
     except Exception as e:
         logger.error(f"Failed to send message to channel: {e}")
-        from aiogram.types import ReplyKeyboardRemove
+        
+        # Показываем соответствующую клавиатуру при ошибке
+        is_admin = message.from_user.id in ADMIN_IDS
+        keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
+        
         await send_error_message(
             message,
             "Не удалось отправить сообщение. Попробуйте позже или обратитесь к администратору.",
-            reply_markup=ReplyKeyboardRemove()
+            reply_markup=keyboard
         )
-        await message.answer("Выберите действие:", reply_markup=get_main_keyboard())
     
     await state.clear()
 
-
 @router.callback_query(F.data == "my_link")
 async def callback_my_link(callback: CallbackQuery):
-    """Обработчик инлайн-кнопки просмотра ссылки"""
+    """Обработчик инлайн-кнопки просмотра ссылки (для админов)"""
     await callback.answer()
     
     if not await check_auth_callback(callback):
@@ -205,21 +283,19 @@ async def callback_my_link(callback: CallbackQuery):
     # Показываем соответствующие кнопки в зависимости от роли пользователя
     is_admin = callback.from_user.id in ADMIN_IDS
     if is_admin:
-
-        # Затем обычную клавиатуру с функциями администрирования
+        # Для админа показываем функции администрирования
         await callback.message.answer(
             "Функции администрирования:",
             reply_markup=get_admin_keyboard()
         )
     else:
-        # Для обычного пользователя только инлайн-кнопки
+        # Для обычного пользователя показываем основную клавиатуру
         await callback.message.answer(
             "Выберите действие:",
             reply_markup=get_main_keyboard()
         )
 
 @router.message(Command("mylink"))
-@router.message(F.text == "🔗 Мое актуальное")
 async def cmd_my_link(message: Message):
     """Обработчик команды /mylink"""
     if not await check_auth(message):
@@ -227,6 +303,7 @@ async def cmd_my_link(message: Message):
     
     user = db.get_user_by_telegram_id(message.from_user.id)
     link = user[2]
+    
     # Показываем соответствующую клавиатуру в зависимости от роли пользователя
     is_admin = message.from_user.id in ADMIN_IDS
     keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
@@ -238,41 +315,22 @@ async def cmd_my_link(message: Message):
     
     await message.answer("Выберите действие:", reply_markup=keyboard)
 
-@router.callback_query(F.data == "my_link")
-async def callback_my_link(callback: CallbackQuery):
-    """Обработчик инлайн-кнопки просмотра ссылки"""
-    await callback.answer()
-    
-    if not await check_auth_callback(callback):
-        return
-    
-    user = db.get_user_by_telegram_id(callback.from_user.id)
-    link = user[2]
-    # Показываем соответствующую клавиатуру в зависимости от роли пользователя
-    is_admin = callback.from_user.id in ADMIN_IDS
-    keyboard = get_admin_keyboard() if is_admin else get_main_keyboard()
-
-    if link:
-        await callback.message.answer(f"🔗 Ваша текущая информация: {link}")
-    else:
-        await callback.message.answer("У вас еще нет сохраненной ссылки.\nИспользуйте /setlink чтобы добавить ссылку.")
-    
-    await callback.message.answer("Выберите действие:", reply_markup=keyboard)
-
 @router.callback_query(F.data == "logout")
 async def callback_logout(callback: CallbackQuery):
-    """Обработчик инлайн-кнопки выхода"""
+    """Обработчик инлайн-кнопки выхода (для админов)"""
     await callback.answer()
     
     user = db.get_user_by_telegram_id(callback.from_user.id)
     
     if not user:
-        await callback.message.answer("❌ Вы не авторизованы.", reply_markup=get_start_keyboard())
+        from utils.keyboards import get_start_button
+        await callback.message.answer("❌ Вы не авторизованы.", reply_markup=get_start_button())
         return
     
     # Удаление привязки Telegram ID к аккаунту
     db.update_telegram_id(user[0], None)
-    await callback.message.answer("Вы успешно вышли из аккаунта.", reply_markup=get_start_keyboard())
+    from utils.keyboards import get_start_button
+    await callback.message.answer("Вы успешно вышли из аккаунта.", reply_markup=get_start_button())
 
 def setup(dp: Dispatcher):
     """Регистрация обработчиков пользователя"""

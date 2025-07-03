@@ -22,16 +22,13 @@ def get_auth_keyboard():
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_main_keyboard():
-    """Инлайн-клавиатура для авторизованных пользователей"""
+    """Обычная клавиатура для авторизованных пользователей"""
     kb = [
-        [
-            InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link'),
-            InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link')
-        ],
-        [InlineKeyboardButton(text='✉️ Написать сообщение', callback_data='send_message')],
-        [InlineKeyboardButton(text='🚪 Выйти', callback_data='logout')]
+        [KeyboardButton(text='🔗 Моё актуальное'), KeyboardButton(text='🔄 Изменить')],
+        [KeyboardButton(text='✉️ Написать сообщение')],
+        [KeyboardButton(text='🚪 Выйти')]
     ]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
 
 def get_admin_inline_keyboard():
     """Инлайн-клавиатура для базовых действий администраторов"""
