@@ -1,6 +1,6 @@
 import logging
 from aiogram import Router, F, Bot, Dispatcher
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
@@ -9,8 +9,7 @@ from models import LinkStates, MessageStates
 from config import ADMIN_IDS
 from utils.keyboards import get_main_keyboard, get_admin_keyboard, get_start_keyboard, get_cancel_keyboard, get_admin_inline_keyboard
 from utils.helpers import send_error_message, send_success_message, cancel_state
-
-# Создаем роутер для пользовательских команд
+from utils.url_validator import validate_and_fix_url, is_valid_url, get_url_display_name
 router = Router()
 
 # Исправленный импорт logger
@@ -103,6 +102,68 @@ async def process_link(message: Message, state: FSMContext):
         "link": link
     }
 
+@router.message()
+async def handle_custom_buttons(message: Message):
+    """Обработчик кастомных кнопок - должен быть последним в цепочке обработчиков"""
+    if not await check_auth(message):
+        return
+    
+    # Получаем все активные кастомные кнопки
+    custom_buttons = db.get_custom_buttons(active_only=True)
+    
+    # Ищем кнопку с таким названием
+    for button_data in custom_buttons:
+        button_id, name, url, is_active = button_data
+        if message.text.strip() == name:
+            try:
+                # Проверяем и исправляем URL
+                fixed_url = validate_and_fix_url(url)
+                
+                if not is_valid_url(fixed_url):
+                    # Если URL невалидный, показываем текстовое сообщение
+                    await message.answer(
+                        f"🔗 {name}\n\n"
+                        f"Ссылка: {url}\n\n"
+                        f"⚠️ Некорректный формат ссылки. Обратитесь к администратору.",
+                        disable_web_page_preview=True
+                    )
+                else:
+                    # Создаем инлайн-клавиатуру с кнопкой-ссылкой
+                    display_name = get_url_display_name(fixed_url)
+                    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text=f"🔗 Перейти в {display_name}", url=fixed_url)]
+                    ])
+                    
+                    # Отправляем сообщение с кнопкой-ссылкой
+                    await message.answer(
+                        f"🔗 {name}\n\n"
+                        f"Нажмите на кнопку ниже, чтобы перейти:",
+                        reply_markup=keyboard,
+                        disable_web_page_preview=True
+                    )
+                
+                # Показываем основную клавиатуру обратно
+                is_admin = message.from_user.id in ADMIN_IDS
+                keyboard_main = get_admin_keyboard() if is_admin else get_main_keyboard()
+                await message.answer("Выберите действие:", reply_markup=keyboard_main)
+                return
+                
+            except Exception as e:
+                logger.error(f"Error processing custom button URL: {e}")
+                # В случае ошибки показываем текстовое сообщение
+                await message.answer(
+                    f"🔗 {name}\n\n"
+                    f"Ссылка: {url}\n\n"
+                    f"⚠️ Ошибка при обработке ссылки. Обратитесь к администратору.",
+                    disable_web_page_preview=True
+                )
+                
+                # Показываем основную клавиатуру обратно
+                is_admin = message.from_user.id in ADMIN_IDS
+                keyboard_main = get_admin_keyboard() if is_admin else get_main_keyboard()
+                await message.answer("Выберите действие:", reply_markup=keyboard_main)
+                return
+    
 @router.callback_query(F.data == "send_message")
 async def callback_send_message(callback: CallbackQuery, state: FSMContext):
     """Обработчик инлайн-кнопки отправки сообщения"""

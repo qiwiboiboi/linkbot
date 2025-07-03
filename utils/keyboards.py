@@ -32,10 +32,14 @@ def get_main_keyboard():
     ]
     
     # Добавляем кастомные кнопки
-    custom_buttons = db.get_custom_buttons(active_only=True)
-    for button_data in custom_buttons:
-        button_name = button_data[1]  # name
-        kb.append([KeyboardButton(text=button_name)])
+    try:
+        custom_buttons = db.get_custom_buttons(active_only=True)
+        for button_data in custom_buttons:
+            button_name = button_data[1]  # name
+            kb.append([KeyboardButton(text=button_name)])
+    except Exception as e:
+        # Если возникла ошибка с базой данных, просто пропускаем кастомные кнопки
+        pass
     
     # Кнопка выхода в конце
     kb.append([KeyboardButton(text='🚪 Выйти')])
