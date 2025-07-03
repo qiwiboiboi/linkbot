@@ -22,16 +22,30 @@ def get_auth_keyboard():
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_main_keyboard():
-    """Инлайн-клавиатура для авторизованных пользователей"""
+    """Обычная клавиатура для авторизованных пользователей с кастомными кнопками"""
+    from database import db  # Импортируем здесь, чтобы избежать циклического импорта
+    
+    # Базовые кнопки
     kb = [
-        [
-            InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link'),
-            InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link')
-        ],
-        [InlineKeyboardButton(text='✉️ Написать сообщение', callback_data='send_message')],
-        [InlineKeyboardButton(text='🚪 Выйти', callback_data='logout')]
+        [KeyboardButton(text='🔗 Моё актуальное'), KeyboardButton(text='🔄 Изменить')],
+        [KeyboardButton(text='✉️ Написать сообщение')]
     ]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
+    
+    # Добавляем кастомные кнопки
+    custom_buttons = db.get_custom_buttons(active_only=True)
+    for button_data in custom_buttons:
+        button_name = button_data[1]  # name
+        kb.append([KeyboardButton(text=button_name)])
+    
+    # Кнопка выхода в конце
+    kb.append([KeyboardButton(text='🚪 Выйти')])
+    
+    return ReplyKeyboardMarkup(
+        keyboard=kb, 
+        resize_keyboard=True, 
+        one_time_keyboard=False,
+        is_persistent=True
+    )
 
 def get_admin_inline_keyboard():
     """Инлайн-клавиатура для базовых действий администраторов"""
@@ -55,7 +69,12 @@ def get_admin_keyboard():
         [KeyboardButton(text='📋 Канал для ссылок'), KeyboardButton(text='💬 Канал для сообщений')],
         [KeyboardButton(text='🔘 Управление кнопками')]
     ]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+    return ReplyKeyboardMarkup(
+        keyboard=kb, 
+        resize_keyboard=True,
+        one_time_keyboard=False,
+        is_persistent=True
+    )
 
 def get_button_management_keyboard():
     """Клавиатура для управления кастомными кнопками"""
@@ -65,7 +84,13 @@ def get_button_management_keyboard():
         [KeyboardButton(text='🔄 Вкл/Выкл кнопку')],
         [KeyboardButton(text='↩️ Назад к админке')]
     ]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+    return ReplyKeyboardMarkup(
+        keyboard=kb, 
+        resize_keyboard=True,
+        one_time_keyboard=False,
+        is_persistent=True
+    )
+
 def get_button_edit_keyboard():
     """Клавиатура для выбора что изменить в кнопке"""
     kb = [
