@@ -22,25 +22,16 @@ def get_auth_keyboard():
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_main_keyboard():
-    """Обычная клавиатура для авторизованных пользователей с кастомными кнопками"""
-    from database import db  # Импортируем здесь, чтобы избежать циклического импорта
-    
-    # Базовые кнопки
+    """Инлайн-клавиатура для авторизованных пользователей"""
     kb = [
-        [KeyboardButton(text='🔗 Моё актуальное'), KeyboardButton(text='🔄 Изменить')],
-        [KeyboardButton(text='✉️ Написать сообщение')]
+        [
+            InlineKeyboardButton(text='🔗 Моё актуальное', callback_data='my_link'),
+            InlineKeyboardButton(text='🔄 Изменить', callback_data='set_link')
+        ],
+        [InlineKeyboardButton(text='✉️ Написать сообщение', callback_data='send_message')],
+        [InlineKeyboardButton(text='🚪 Выйти', callback_data='logout')]
     ]
-    
-    # Добавляем кастомные кнопки
-    custom_buttons = db.get_custom_buttons(active_only=True)
-    for button_data in custom_buttons:
-        button_name = button_data[1]  # name
-        kb.append([KeyboardButton(text=button_name)])
-    
-    # Кнопка выхода в конце
-    kb.append([KeyboardButton(text='🚪 Выйти')])
-    
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=False)
+    return InlineKeyboardMarkup(inline_keyboard=kb)
 
 def get_admin_inline_keyboard():
     """Инлайн-клавиатура для базовых действий администраторов"""

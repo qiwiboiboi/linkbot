@@ -48,7 +48,7 @@ async def get_channel_info(bot: Bot, channel_id: str) -> str:
         return f"ID: {channel_id}"
 
 @router.message(F.text == "📋 Канал для ссылок")
-async def cmd_set_links_channel(message: Message, state: FSMContext, bot: Bot):
+async def cmd_set_links_channel(message: Message, state: FSMContext):
     """Обработчик команды установки канала для ссылок"""
     if not await check_admin(message):
         return
@@ -61,7 +61,6 @@ async def cmd_set_links_channel(message: Message, state: FSMContext, bot: Bot):
         current_status = "Отсутствует"
     
     await message.answer(
-        f"📋 Текущий канал для ссылок: {current_status}\n\n"
         "Введите ID канала для публикации ссылок.\n"
         "Важно: бот должен быть администратором канала.",
         reply_markup=get_cancel_keyboard()
@@ -70,7 +69,7 @@ async def cmd_set_links_channel(message: Message, state: FSMContext, bot: Bot):
     await state.set_state(ChannelStates.waiting_for_channel_id)
 
 @router.message(F.text == "💬 Канал для сообщений")
-async def cmd_set_messages_channel(message: Message, state: FSMContext, bot: Bot):
+async def cmd_set_messages_channel(message: Message, state: FSMContext):
     """Обработчик команды установки канала для сообщений"""
     if not await check_admin(message):
         return
@@ -83,7 +82,6 @@ async def cmd_set_messages_channel(message: Message, state: FSMContext, bot: Bot
         current_status = "Отсутствует"
     
     await message.answer(
-        f"💬 Текущий канал для сообщений: {current_status}\n\n"
         "Введите ID канала для публикации сообщений пользователей.\n"
         "Важно: бот должен быть администратором канала.",
         reply_markup=get_cancel_keyboard()
@@ -809,116 +807,20 @@ async def check_admin_and_get_users(message: Message) -> list:
 @router.message(F.text == "👥 Пользователи")
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
-    """Обработчик команды /admin с разбивкой на части"""
+    """Обработчик команды /admin"""
     users = await check_admin_and_get_users(message)
     if not users:
         return
     
-    # Разбиваем список пользователей на части
-    await send_user_list_in_parts(message, users)
+    report = format_user_list(users)
+    if users:
+        report += "\nДля добавления нового пользователя используйте команду /adduser"
     
+    await message.answer(report)
     await message.answer(
         "Функции администрирования:",
         reply_markup=get_admin_keyboard()
     )
-
-async def send_user_list_in_parts(message: Message, users: list):
-    """Отправка списка пользователей частями"""
-    if not users:
-        await message.answer("Список пользователей пуст.")
-        return
-    
-    # Константы для разбивки
-    MAX_MESSAGE_LENGTH = 4000  # Оставляем запас от лимита в 4096 символов
-    
-    # Формируем данные для каждого пользователя
-    user_entries = []
-    for user_data in users:
-        # Безопасная распаковка данных с учетом возможного отсутствия поля full_name
-        user_id = user_data[0]
-        username = user_data[1]
-        telegram_id = user_data[2] if len(user_data) > 2 else None
-        link = user_data[3] if len(user_data) > 3 else None
-        full_name = user_data[4] if len(user_data) > 4 else None
-        
-        # Получаем данные пользователя включая пароль
-        from database import db
-        user_db_data = db.get_user_by_username(username)
-        password = user_db_data[1] if user_db_data else "Не найден"
-        
-        # Формируем отображение имени ТОЛЬКО если есть full_name и оно не пустое
-        if full_name and full_name.strip():
-            display_name = f"{full_name} (@{username})"
-        else:
-            display_name = username
-        
-        # Формируем текст для одного пользователя
-        user_text = f"ID: {user_id} | {display_name}\n"
-        user_text += f"   Логин: {username}\n"
-        user_text += f"   Пароль: {password}\n"
-        
-        if telegram_id:
-            user_text += f"   Статус: ✅ Авторизован (TG ID: {telegram_id})\n"
-        else:
-            user_text += f"   Статус: ❌ Не авторизован\n"
-            
-        user_text += f"   Информация: {link or '—'}\n\n"
-        
-        user_entries.append(user_text)
-    
-    # Разбиваем на части
-    parts = []
-    current_part = ""
-    current_length = 0
-    
-    # Заголовок для первой части
-    header = f"📊 Список всех пользователей (всего: {len(users)}):\n\n"
-    
-    for i, user_entry in enumerate(user_entries):
-        # Проверяем, поместится ли текущая запись в текущую часть
-        entry_length = len(user_entry)
-        
-        # Для первой части учитываем длину заголовка
-        if not current_part:
-            test_length = len(header) + current_length + entry_length
-        else:
-            test_length = current_length + entry_length
-        
-        if test_length > MAX_MESSAGE_LENGTH and current_part:
-            # Если не помещается и есть текущая часть, сохраняем её
-            parts.append(current_part.rstrip())
-            current_part = user_entry
-            current_length = entry_length
-        else:
-            # Если помещается, добавляем к текущей части
-            current_part += user_entry
-            current_length += entry_length
-    
-    # Добавляем последнюю часть
-    if current_part:
-        parts.append(current_part.rstrip())
-    
-    # Отправляем части
-    for i, part in enumerate(parts):
-        if i == 0:
-            # Первая часть с заголовком
-            full_message = header + part
-        else:
-            # Остальные части с номером
-            full_message = f"📊 Список пользователей (продолжение {i + 1}):\n\n{part}"
-        
-        await message.answer(full_message)
-        
-        # Небольшая задержка между сообщениями
-        import asyncio
-        await asyncio.sleep(0.1)
-    
-    # Добавляем итоговую информацию
-    if len(parts) > 1:
-        await message.answer(f"📝 Итого пользователей: {len(users)}")
-    
-    # Добавляем инструкцию только в конце
-    await message.answer("Для добавления нового пользователя используйте команду /adduser")
 
 @router.message(F.text == "🏪 Добавить")
 @router.message(Command("adduser"))
