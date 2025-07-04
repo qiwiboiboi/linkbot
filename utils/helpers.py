@@ -1,5 +1,6 @@
 # Обновление utils/helpers.py
 
+from asyncio.log import logger
 from aiogram import types
 from aiogram.fsm.context import FSMContext
 from config import ADMIN_IDS
@@ -46,6 +47,7 @@ async def cancel_state(message: types.Message, state: FSMContext) -> bool:
         
         return True
     return False
+
 def format_user_list(users: list) -> str:
     """Форматирование списка пользователей - используется только для коротких списков"""
     if not users:

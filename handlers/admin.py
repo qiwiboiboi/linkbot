@@ -876,13 +876,9 @@ async def send_user_list_in_parts(message: Message, users: list):
             else:
                 user_text += f"❌ Не авторизован\n"
             
-            # Обрезаем слишком длинные ссылки
+            # Показываем ссылки полностью
             if link:
-                if len(link) > 100:
-                    display_link = link[:97] + "..."
-                else:
-                    display_link = link
-                user_text += f"🔗 Информация: {display_link}\n"
+                user_text += f"🔗 Информация: {link}\n"
             else:
                 user_text += f"🔗 Информация: —\n"
             
