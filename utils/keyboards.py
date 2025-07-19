@@ -42,10 +42,26 @@ def get_main_keyboard():
             custom_buttons = db.get_custom_buttons(active_only=True)
             logger.info(f"Found {len(custom_buttons)} custom buttons")
             
+            # Группируем кастомные кнопки по 2 в строке
+            custom_rows = []
+            current_row = []
+            
             for button_data in custom_buttons:
                 button_name = button_data[1]  # name
-                kb.append([KeyboardButton(text=button_name)])
+                current_row.append(KeyboardButton(text=button_name))
                 logger.info(f"Added custom button: {button_name}")
+                
+                # Если в строке уже 2 кнопки, добавляем строку и начинаем новую
+                if len(current_row) == 2:
+                    custom_rows.append(current_row)
+                    current_row = []
+            
+            # Если остались кнопки в незавершенной строке, добавляем их
+            if current_row:
+                custom_rows.append(current_row)
+            
+            # Добавляем все строки с кастомными кнопками
+            kb.extend(custom_rows)
                 
         except Exception as e:
             logger.error(f"Error getting custom buttons: {e}")
